@@ -1,0 +1,7 @@
+.pytest_cache/
+__pycache__/
+sessionServer/config/.env
+sessionServer/static/admin
+sessionServer/static/jazzmin
+sessionServer/static/rest_framework
+sessionServer/static/vendor

@@ -1,0 +1,27 @@
+[ req ]
+default_bits       = 2048
+default_md         = sha256
+distinguished_name = req_distinguished_name
+req_extensions     = req_ext
+
+[ req_distinguished_name ]
+countryName                = Country Name (2 letter code)
+countryName_default        = PL
+stateOrProvinceName        = State or Province Name (full name)
+stateOrProvinceName_default = Poland
+localityName               = Locality Name (eg, city)
+localityName_default       = Skierniewice
+organizationName           = Organization Name (eg, company)
+organizationName_default   = EdArt
+organizationalUnitName     = Organizational Unit Name (eg, section)
+organizationalUnitName_default = Development
+commonName                 = Common Name (e.g. server FQDN or YOUR name)
+commonName_default         = SessionID
+
+[ req_ext ]
+subjectAltName = @alt_names
+
+[ alt_names ]
+DNS.1 = SessionID
+DNS.2 = host.docker.internal
+IP.1 = 127.0.0.1

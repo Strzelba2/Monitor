@@ -1,0 +1,27 @@
+[ req ]
+utf8               = yes
+default_bits       = 2048
+default_md         = sha256
+distinguished_name = req_distinguished_name
+req_extensions     = req_ext
+string_mask        = utf8only
+name_opt           = multiline,-esc_msb,utf8
+
+[ req_distinguished_name ]
+countryName                = Country Name (2 letter code)
+countryName_default        = PL
+stateOrProvinceName        = State or Province Name (full name)
+stateOrProvinceName_default = Poland
+localityName               = Locality Name (eg, city)
+localityName_default       = Skierniewice
+organizationName           = Organization Name (eg, company)
+organizationName_default   = EdArt
+organizationalUnitName     = Organizational Unit Name (eg, section)
+organizationalUnitName_default = Development
+commonName                 = Common Name (e.g. YOUR name)
+commonName_default         = testUserApache
+
+[ req_ext ]
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = clientAuth
+
