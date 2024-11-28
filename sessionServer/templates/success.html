@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="green-border">
+    <div class="headline">
+        <i class="fas fa-check fa-2x" style="color: green;"></i>
+    </div>
+    <h1>Success!</h1>
+    <div class="info-msg">
+        <p>{{message}}</p>
+    </div>
+    <div class="footnote">
+        <button onclick="history.back()">BACK</button>
+    </div>
+</div>    
+{% endblock content %}

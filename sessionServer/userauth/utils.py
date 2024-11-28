@@ -9,7 +9,6 @@ import redis
 
 logger = logging.getLogger('django')
 
-
 def get_sessions_for_user(user: User) -> list:
     """
     Retrieve all active sessions for a specific user.
@@ -51,8 +50,6 @@ def get_sessions_for_user(user: User) -> list:
             
     logger.debug(f"Retrieved {len(sessions)} sessions for user {user.pk}.")
     return sessions
-
-
 
 class AllowedUsersStore:
     """

@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 from unittest import mock
 from middleware.ssl_middleware import SSLMiddleware  
-from rest_framework.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
+from rest_framework.status import HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED, HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_406_NOT_ACCEPTABLE
 from oauth2_provider.models import AccessToken, Application
 import uuid
 from django.utils import timezone
@@ -122,7 +122,7 @@ class SSLMiddlewareTest(TestCase):
         logger.info("Starting test: test_login_path_username_mismatch")
         
         request = self.factory.post(
-            '/login', secure=True, data=json.dumps({'username': 'wronguser'}), content_type="application/json"
+            '/login', secure=True, data=json.dumps({'username': self.superuser.username}), content_type="application/json"
         )
         request.META['HTTP_X_SSL_CLIENT_CN'] = self.user.username
         response = self.middleware(request)
@@ -158,7 +158,7 @@ class SSLMiddlewareTest(TestCase):
         response = self.middleware(request)
         self.assertEqual(response.status_code, HTTP_403_FORBIDDEN)
         response_data = json.loads(response.content)
-        self.assertEqual(response_data['error'], 'Incorrect user email')
+        self.assertEqual(response_data['error'], 'Incorrect user')
         
         logger.info("Test passed: test_login_path_username_email")
         
@@ -265,37 +265,47 @@ class SSLMiddlewareTest(TestCase):
         """Test admin access with an invalid SSL_CLIENT_SAN_DNS_0 header."""
         logger.info("Starting test: test_admin_with_invalid_certificate")
         
-        request = self.factory.get("/admin", secure=True, content_type='application/json',)
+        request = self.factory.get("/admin", secure=True, HTTP_ACCEPT='text/html')
         request.META["SSL_CLIENT_SAN_DNS_0"] = "not_admin"
         request.META['HTTP_X_SSL_CLIENT_CN'] = self.user.username
         response = self.middleware(request)
         self.assertEqual(response.status_code, HTTP_401_UNAUTHORIZED)
-        response_data = json.loads(response.content)
-        self.assertEqual(response_data['error'], 'Certificate not appropriate')
+        self.assertIn(b'Certificate not appropriate', response.content)
         
         logger.info("Test passed: test_admin_with_invalid_certificate")
         
     def test_admin_with_no_superuser(self):
         """Test admin access with not superuser accsess"""
         logger.info("Starting test: test_admin_with_no_superuser")
-        request = self.factory.get("/admin", secure=True, content_type='application/json')
+        request = self.factory.get("/admin", secure=True, HTTP_ACCEPT='text/html')
         request.META["SSL_CLIENT_SAN_DNS_0"] = "admin"
         request.META['HTTP_X_SSL_CLIENT_CN'] = self.user.username
         response = self.middleware(request)
+
         self.assertEqual(response.status_code, HTTP_401_UNAUTHORIZED)
-        response_data = json.loads(response.content)
-        self.assertEqual(response_data['error'], 'User has no permissions')
+        self.assertIn(b'User has no permissions', response.content)
         
         logger.info("Test pass: test_admin_with_no_superuser")
         
     def test_admin_path_valid_superuser(self):
         """Test the /admin path with a valid superuser certificate."""
         logger.info("Starting test: test_admin_path_valid_superuser")
-        request = self.factory.get('/admin', secure=True, **{'HTTP_X_SSL_CLIENT_CN': self.superuser.username, 'SSL_CLIENT_SAN_DNS_0': 'admin'})
+        request = self.factory.get('/admin', secure=True, **{'HTTP_X_SSL_CLIENT_CN': self.superuser.username, 'SSL_CLIENT_SAN_DNS_0': 'admin'},HTTP_ACCEPT='text/html')
         response = self.middleware(request)
         self.assertEqual(response, request)
         
         logger.info("Test passed: test_admin_path_valid_superuser")
+        
+    def test_admin_path_valid_superuser_no_valid_accept(self):
+        """Test the /admin path with a valid superuser certificate.and no valid accept"""
+        logger.info("Starting test: test_admin_path_valid_superuser")
+        request = self.factory.get('/admin', secure=True, **{'HTTP_X_SSL_CLIENT_CN': self.superuser.username, 'SSL_CLIENT_SAN_DNS_0': 'admin'})
+        response = self.middleware(request)
+        self.assertEqual(response.status_code, HTTP_406_NOT_ACCEPTABLE)
+        response_data = json.loads(response.content)
+        self.assertEqual(response_data['error'], 'No valid Request')
+        
+        logger.info("Test passed: test_admin_path_valid_superuser_no_valid_accept")
 
     def test_invalid_path(self):
         """Test an invalid path."""

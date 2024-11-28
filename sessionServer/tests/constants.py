@@ -47,3 +47,9 @@ WRONG_CERT_FILE =os.path.join(BASE_DIR,"cert","new","wrong_client.crt")
 
 DOCKER_CLIENT_CERT = "/sessionServer/cert/new/client.crt"
 
+headers = {
+    'X-Forwarded-For': '203.0.113.195',
+    "Content-Type": "application/json",
+    "Accept": "application/json"
+}
+

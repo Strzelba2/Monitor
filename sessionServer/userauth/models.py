@@ -253,3 +253,33 @@ def handle_redis_connected(sender, **kwargs) -> None:
         User.allowed_users.redis_connected(True)
         User.load_allowed_users()
         
+class UsedToken(models.Model):
+    token = models.CharField(
+        verbose_name=_("Token"),
+        max_length=255,
+        unique=True,
+        editable=False,
+        help_text=_("The unique token associated with the user."),
+    )
+    user = models.ForeignKey(
+        User,
+        verbose_name=_("User"),
+        on_delete=models.CASCADE,
+        editable=False,
+        help_text=_("The user who used this token."),
+    )
+    used_at = models.DateTimeField(
+        verbose_name=_("Used At"),
+        auto_now_add=True,
+        editable=False,
+        help_text=_("The timestamp when this token was used."),
+    )
+
+    def __str__(self):
+        return f"Token for {self.user.username} used at {self.used_at}"
+
+    class Meta:
+        verbose_name = _("Used Token")
+        verbose_name_plural = _("Used Tokens")
+        ordering = ["-used_at"]
+        

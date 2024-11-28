@@ -7,18 +7,28 @@ from oauth2_provider.contrib.rest_framework import TokenHasReadWriteScope
 from rest_framework import views, status
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
-from rest_framework.permissions import IsAuthenticated,AllowAny
-from rest_framework.renderers import JSONRenderer
+from rest_framework.permissions import IsAuthenticated,AllowAny,IsAdminUser
+from rest_framework.renderers import JSONRenderer, TemplateHTMLRenderer
 from session.password_mask_filter import PasswordMaskFilter
 from .exceptions import SecretServerError
 from django.conf import settings
 from django.core.cache import cache
 from django.contrib.sessions.models import Session
 from oauthlib.common import generate_token
+from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
 from django.utils.timezone import now
 from datetime import timedelta
 from oauth2_provider.settings import oauth2_settings
-# import pyotp
+import pyotp
+from .models import User, UsedToken
+from .two_factor import TwoFactor
+from django.core.mail import send_mail
+from django.urls import reverse
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
+from .validators import validate_signed_token_format
+from django.core.exceptions import ValidationError
 
 import logging
 from requests.exceptions import SSLError
@@ -27,8 +37,7 @@ import traceback
 import json
 from typing import Dict
 
-# import hashlib
-# import base64
+from utils.responses import formatted_response
 
 logger = logging.getLogger('django')
 logger.addFilter(PasswordMaskFilter())
@@ -49,33 +58,31 @@ class LoginAPIView(views.APIView,TokenView):
     permission_classes = [AllowAny] 
     renderer_classes = [JSONRenderer]
     
-    # def dispatch(self, request, *args, **kwargs):
-    #     logger.debug("dispatch")
-        # logger.debug(f"{request.headers}")
-
-        # verification_code = request.headers.get('X-Verification-Code')
-        # secret_key = self.generate_secret_key()
-        # totp = pyotp.TOTP(secret_key)
-
-        # if not verification_code or not totp.verify(verification_code):
-        #     return JsonResponse({'error': 'Invalid or expired code'}, status=403)
-
-        # return super().dispatch(request, *args, **kwargs)
+    def dispatch(self, request, *args, **kwargs):
+        logger.debug("dispatch")
         
-    # def generate_secret_key(email, username):
+        # Access username and email set by the middleware
+        username = getattr(request, 'username', None)
+        email = getattr(request, 'email', None)
+        logger.debug(f"email: {email}")
+        logger.debug(f"username: {username}")
 
-    #     SERVER_SALT = settings.SERVER_SALT
+        verification_code = request.headers.get('X-Verification-Code')
+        secret_key = TwoFactor.generate_secret_key(email, username)
+        logger.debug(f"secretKey: {secret_key}")
+        logger.debug(f"verification_code: {verification_code}")
+        totp = pyotp.TOTP(secret_key)
 
-    #     combined = f"{username[::-1]}:{"POST"}:{email.lower()}:{SERVER_SALT}".encode('utf-8')
+        if not verification_code or not totp.verify(verification_code):
+            return formatted_response(
+                request,
+                {'error': 'Invalid or expired code'},
+                template_name='error.html',
+                status_code=status.HTTP_403_FORBIDDEN
+            )
 
-    #     hash1 = hashlib.sha512(combined).digest()
-        
-    #     salted_hash = hashlib.pbkdf2_hmac('sha256', hash1, SERVER_SALT.encode('utf-8'), iterations=100_000)
+        return super().dispatch(request, *args, **kwargs)
 
-    #     secret_key = base64.b32encode(salted_hash).decode('utf-8')[:32]  
-    
-    #     return secret_key
-    
     def create_response(self, token: AccessToken,refresh_token: RefreshToken ) -> Dict[str, str]:
         """
         Create a response dictionary containing details of the access and refresh tokens.
@@ -478,3 +485,226 @@ class LogoutAPIView(views.APIView,RevokeTokenView):
         else:
             logger.error("No access token found in request. Unable to proceed with logout.")
             return Response({'error': 'Access token missing from request'}, status=status.HTTP_400_BAD_REQUEST)
+
+class QRCodeView(views.APIView):
+    """
+    View to generate and display a QR code for two-factor authentication.
+
+    This view handles:
+    - Validating the signed token.
+    - Checking for expired or used tokens.
+    - Generating a QR code based on a valid token.
+
+    Methods:
+        - `get`: Handles GET requests to process the token and return the QR code.
+    """
+    
+    permission_classes = [] 
+    renderer_classes = [TemplateHTMLRenderer] 
+
+    def get(self, request, token):
+        """
+        Handle GET requests to validate the token and generate a QR code.
+
+        Args:
+            request (HttpRequest): The incoming HTTP request.
+            token (str): The signed token to validate.
+
+        Returns:
+            HttpResponse: A response containing the QR code image or an error message.
+
+        Raises:
+            ValidationError: If the token format is invalid.
+        """
+        
+        logger.info("Starting qrcode view process for user.")
+
+        signer = TimestampSigner(salt=settings.SERVER_SALT)
+  
+        if not token :
+            logger.warning("Request missing token.")
+            return formatted_response(
+                request,
+                {'error': 'Invalid request'},
+                template_name='error.html',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if the token exists and is already used
+        if UsedToken.objects.filter(token=token).exists():
+            logger.warning("Token has already been used.")
+            return formatted_response(
+                            request, 
+                            {'error': 'This link has already been used.'},
+                            template_name='error.html',
+                            status_code=status.HTTP_403_FORBIDDEN)
+
+        # Validate token format
+        try:
+            validate_signed_token_format(token, min_length=20, max_length=255)
+        except ValidationError as e:
+            logger.error(f"Token format validation failed: {str(e)}")
+            return formatted_response(
+                request,
+                {'error': 'Invalid token format'},
+                template_name='error.html',
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+          
+        # Unsigned token and validate timeout  
+        try:
+            user_id = signer.unsign(token, max_age=settings.TOKEN_TIMEOUT)
+        except SignatureExpired:
+            logger.warning("Token has expired.")
+            return formatted_response(
+                            request, 
+                            {'error': 'Link has expired'},
+                            template_name='error.html',
+                            status_code=status.HTTP_404_NOT_FOUND)
+           
+        except BadSignature:
+            logger.error("Token has an invalid signature.")
+            return formatted_response(
+                            request, 
+                            {'error': 'Invalid token'},
+                            template_name='error.html',
+                            status_code=status.HTTP_404_NOT_FOUND)
+
+        # Retrieve user from token data
+        user = User.objects.filter(id=user_id).first()
+        if not user:
+            logger.error(f"No user found with ID: {user_id}")
+            return formatted_response(
+                request,
+                {'error': 'User does not exist'},
+                template_name='error.html',
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        # Mark token as used
+        logger.info(f"Marking token as used for user: {user.username}")
+        UsedToken.objects.create(token=token, user=user)
+
+        # Generate QR code
+        secret_key = TwoFactor.generate_secret_key(email=user.email, username=user.username)
+        provisioning_uri = TwoFactor.generate_provisioning_uri(secret_key, username=user.username)
+        qr_code_image = TwoFactor.generate_qr_code(provisioning_uri)
+
+        logger.info(f"QR code successfully generated for user: {user.username}")
+        return Response({'image': qr_code_image}, template_name='qrcode.html')
+    
+class SendQRLinkView(views.APIView):
+    """
+    View to generate and send a QR code link for further registration.
+    Only accessible by admin users.
+    """
+    permission_classes = [IsAdminUser]
+    renderer_classes = [TemplateHTMLRenderer] 
+    
+    def http_method_not_allowed(self, request, *args, **kwargs):
+        return formatted_response(
+            request,
+            {'error': 'Invalid method'},
+            template_name='error.html',
+            status_code=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+    
+    def generate_secure_link(self, user_id: int) -> str:
+        """
+        Generate a secure signed link for the user.
+
+        Args:
+            user_id (int): The ID of the user.
+
+        Returns:
+            str: A full URL containing the secure token.
+        """
+        
+        signer = TimestampSigner(salt=settings.SERVER_SALT)
+        token = signer.sign(user_id)
+        
+        validate_signed_token_format(token, min_length=20, max_length=255)
+        
+        logger.info(f"Generated secure token for user {user_id}.")
+        domain = settings.DOMAIN
+        path = reverse('qrcode',kwargs={'token': token}) 
+
+        return f"https://{domain}{path}"
+    
+    def send_email(self,user: User, link: str) -> None:
+        """
+        Send an email with the QR code link to the user.
+
+        Args:
+            user (User): The recipient user.
+            link (str): The secure link to include in the email.
+        """
+        logger.info(f"Preparing email for user {user.email}.")
+        
+        subject = f"QrCode for {user.username} for further registration"
+        from_email = settings.DEFAULT_FROM_EMAIL
+        recipient_list = [user.email]
+        context = {
+            "user": user,
+            "link": link,
+        }
+        html_email = render_to_string("qr_email.html", context)
+        text_email = strip_tags(html_email)
+
+        email = EmailMultiAlternatives(subject, text_email, from_email, recipient_list)
+        email.attach_alternative(html_email, "text/html")
+        email.send()
+        logger.info(f"Email successfully sent to {user.email}.")
+
+    def get(self, request, user_id: str, *args, **kwargs) -> Response:
+        """
+        Handle GET requests to generate and send a QR code link.
+
+        Args:
+            request (HttpRequest): The incoming request.
+            user_id (str): The user ID passed in the URL.
+
+        Returns:
+            Response: Success or error response.
+        """
+  
+        try:
+            # Validate user ID format
+            if not str(user_id).isdigit():
+                logger.warning("Invalid user ID format received.")
+                return formatted_response(
+                    request,
+                    {'error': 'Invalid user ID'},
+                    template_name='error.html',
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )  
+            user = User.objects.filter(id=user_id).first()
+
+            if not user:
+                logger.warning(f"User with ID {user_id} does not exist.")
+                return formatted_response(
+                    request,
+                    {'error': 'User does not exist'},
+                    template_name='error.html',
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+            try:
+                link = self.generate_secure_link(user_id=user.id)
+            except Exception as e:
+                return formatted_response(
+                    request,
+                    {'error': str(e)},
+                    template_name='error.html',
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )    
+            self.send_email(user,link)
+
+            return Response({'message': f"The link was sent to user {user.email}."}, template_name='success.html')
+        
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+            return formatted_response(
+                            request, 
+                            {'error': str(e)},
+                            template_name='error.html',
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)

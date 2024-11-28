@@ -86,17 +86,28 @@ class SSLMiddleware:
                 if not username:
                     logger.warning("Username not provided in request data")
                     return JsonResponse({'error': "Username is required for login."}, status=status.HTTP_400_BAD_REQUEST)
+                
+                email = None
                 try:  
                     if "@" in username:
-                        username = get_user_model().objects.get(email=username).username 
+                        user = get_user_model().objects.get(email=username)
+                        username = user.username
+                        email = user.email
+                    else:
+                        user = get_user_model().objects.get(username=username)
+                        email = user.email
                 except User.DoesNotExist:
                     logger.warning("No user found for username/email: %s", username)
-                    return JsonResponse({'error': 'Incorrect user email'}, status=status.HTTP_403_FORBIDDEN)
+                    return JsonResponse({'error': 'Incorrect user'}, status=status.HTTP_403_FORBIDDEN)
 
                 # Compare CN with username for validation
                 if client_cn != username:
                     logger.error("Mismatch between client CN and provided username")
                     return JsonResponse({'error': 'Incorrect user or certificate'}, status=status.HTTP_403_FORBIDDEN)
+                
+                # Attach username and email to the request object
+                request.username = username
+                request.email = email
                
             # Handle token refresh path - validate client CN and access token's user
             elif path in [ "refresh","logout"]:
@@ -134,8 +145,13 @@ class SSLMiddleware:
                 else:
                     logger.error("Access token has no associated user")
                     return JsonResponse({'error': 'No valid Access token'}, status=status.HTTP_401_UNAUTHORIZED)
-                
+            elif path in [ "qrcode","qrlink"]:
+                if 'text/html' not in request.META.get('HTTP_ACCEPT', ''):
+                    return JsonResponse({'error': 'No valid Request'}, status=status.HTTP_406_NOT_ACCEPTABLE)
+                    
             elif path == "admin":
+                if 'text/html' not in request.META.get('HTTP_ACCEPT', ''):
+                    return JsonResponse({'error': 'No valid Request'}, status=status.HTTP_406_NOT_ACCEPTABLE)
                 
                 admin = request.META.get('SSL_CLIENT_SAN_DNS_0')
                 logger.debug(f"{admin}")

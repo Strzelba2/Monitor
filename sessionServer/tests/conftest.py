@@ -141,19 +141,25 @@ def set_env() -> None:
             
     logger.info("Environment variables updated successfully.")
 
-def get_headers(token: str) -> dict:
+    
+def get_headers(kwargs: dict) -> dict:
     """
-    Constructs headers for an HTTP request, including the Authorization token.
+    Constructs and returns a dictionary of HTTP headers by merging default headers 
+    with the headers provided in the `kwargs` parameter. 
+    
+    If a header key already exists in the default headers, its value will be updated 
+    with the value provided in `kwargs`. Any additional headers in `kwargs` that are 
+    not part of the default headers will be added to the resulting dictionary.
 
-    :param token: Bearer token for authentication
-    :return: A dictionary of HTTP headers
+    :param kwargs: A dictionary of headers to override or add to the defaults.
+    :return: A dictionary containing the updated headers.
     """
-    logger.debug(f"Creating headers with token: {token}")
-    return {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        'X-Forwarded-For': '203.0.113.195',
-    }
+    logger.debug(f"Setting up additional headers in request:  {kwargs}")
+    header = headers.copy() 
+    for key in list(kwargs.keys()):  
+        if key in header:  
+            header[key] = kwargs.pop(key)  
+    return {**header, **kwargs} 
 
 
 def get_client_secret(username: str) -> str:

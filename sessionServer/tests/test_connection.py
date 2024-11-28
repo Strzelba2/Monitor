@@ -5,19 +5,14 @@ import conftest
 import constants
 import ssl
 import time
+import pyotp
+from userauth.two_factor import TwoFactor
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-headers = {
-    'X-Forwarded-For': '203.0.113.195',
-    "Content-Type": "application/json",
-    "Accept": "application/json"
-}
 
 
 @pytest.mark.usefixtures("docker_services", "secret_provider")
@@ -27,6 +22,8 @@ class TestSessionServer:
     def send_request(self, session, url, username, password, headers):
         """Helper method to send login requests."""
         logger.debug(f"Sending request to {url} with username: {username}")
+        
+        
         response = session.post(
             url,
             json={"username": username, "password": password},
@@ -71,7 +68,7 @@ class TestSessionServer:
                 data={"username": constants.username,
                       "password": constants.password},
                 cert=(constants.CERT_FILE, constants.KEY_FILE),
-                headers=headers, verify=constants.CA_FILE
+                headers=constants.headers, verify=constants.CA_FILE
                 )
 
         assert "tlsv1 alert protocol version" in str(excinfo.value)
@@ -80,6 +77,13 @@ class TestSessionServer:
     def test_login_tls_1_2_https(self):
         """Test HTTPS login with TLS 1.2. Expect successful authentication."""
         logger.info("Testing login with TLS 1.2")
+        
+        secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
+        logger.debug(f"clent secret key:  {secret_key}")
+        totp = pyotp.TOTP(secret_key)
+        verification_code = totp.now()
+        header = conftest.get_headers({"X-Verification-Code":verification_code})
+
         session = requests.Session()
         session.mount('https://', conftest.CustomTLSAdapter(ssl_minimum_version=ssl.TLSVersion.TLSv1_1,
                                                             ssl_maximum_version=ssl.TLSVersion.TLSv1_2))
@@ -88,7 +92,7 @@ class TestSessionServer:
                                 constants.HTTPS_URL_LOGIN,
                                 json={"username": constants.username, "password": constants.password}, 
                                 cert=(constants.CERT_FILE, constants.KEY_FILE),
-                                headers=headers, verify=constants.CA_FILE)
+                                headers=header, verify=constants.CA_FILE)
 
         assert response.status_code == 200, f"Unexpected status code: {response.status_code}"
         json_data = response.json()
@@ -103,6 +107,13 @@ class TestSessionServer:
         """
         logger.info("Starting test_login_tls_1_2_https_by_email")
         
+        secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
+        logger.debug(f"clent secret key:  {secret_key}")
+        totp = pyotp.TOTP(secret_key)
+        verification_code = totp.now()
+        
+        header = conftest.get_headers({"X-Verification-Code":verification_code})
+        
         session = requests.Session()
         session.mount('https://', conftest.CustomTLSAdapter(ssl_minimum_version=ssl.TLSVersion.TLSv1_1,
                                                             ssl_maximum_version=ssl.TLSVersion.TLSv1_2))
@@ -111,7 +122,7 @@ class TestSessionServer:
                                 constants.HTTPS_URL_LOGIN,
                                 json={"username": constants.email, "password": constants.password}, 
                                 cert=(constants.CERT_FILE, constants.KEY_FILE),
-                                headers=headers, verify=constants.CA_FILE)
+                                headers=header, verify=constants.CA_FILE)
         
         logger.debug(f"Response status code: {response.status_code}")
         logger.debug(f"Response data: {response.json()}")
@@ -132,8 +143,7 @@ class TestSessionServer:
         session.mount('https://', conftest.CustomTLSAdapter(ssl_minimum_version=ssl.TLSVersion.TLSv1_1,
                                                             ssl_maximum_version=ssl.TLSVersion.TLSv1_2))
         
-        header = headers.copy()
-        header['Accept'] = 'text/html'
+        header = conftest.get_headers({"Accept":"text/html"})
         response = session.post(
                                 constants.HTTPS_URL_LOGIN,
                                 json={"username": constants.email, "password": constants.password}, 
@@ -163,13 +173,13 @@ class TestSessionServer:
                                 constants.HTTPS_URL_LOGIN,
                                 json={"username": "wrong user", "password": constants.password}, 
                                 cert=(constants.CERT_FILE, constants.KEY_FILE),
-                                headers=headers, verify=constants.CA_FILE)
+                                headers=constants.headers, verify=constants.CA_FILE)
         
         logger.debug(f"Response status code: {response.status_code}")
         logger.debug(f"Response data: {response.json()}")
 
         assert response.status_code == 403
-        assert 'Incorrect user or certificate' in response.json()['error']
+        assert 'Incorrect user' in response.json()['error']
         
         logger.info("test_login_tls_1_2_https_wrong_user PASSED")
         
@@ -188,7 +198,7 @@ class TestSessionServer:
                                 constants.HTTPS_URL_LOGIN,
                                 json={"username": constants.username, "password": constants.password}, 
                                 cert=(constants.WRONG_CERT_FILE, constants.KEY_FILE),
-                                headers=headers, verify=constants.CA_FILE)
+                                headers=constants.headers, verify=constants.CA_FILE)
         
         logger.info(f"Response status code: {response.status_code}")
         logger.info(f"Response content: {response.content}")
@@ -204,6 +214,14 @@ class TestSessionServer:
         The server should return a 400 status code indicating a bad request with an appropriate error message.
         """
         logger.info("Starting test_login_tls_1_2_https_wrong_data")
+        
+        secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
+        logger.debug(f"clent secret key:  {secret_key}")
+        totp = pyotp.TOTP(secret_key)
+        verification_code = totp.now()
+        
+        header = conftest.get_headers({"X-Verification-Code":verification_code})
+        
         session = requests.Session()
         session.mount('https://', conftest.CustomTLSAdapter(ssl_minimum_version=ssl.TLSVersion.TLSv1_1,
                                                             ssl_maximum_version=ssl.TLSVersion.TLSv1_2))
@@ -212,7 +230,7 @@ class TestSessionServer:
                                 constants.HTTPS_URL_LOGIN,
                                 json={"username": constants.username, "password": constants.password,"other":"otherdata"}, 
                                 cert=(constants.CERT_FILE, constants.KEY_FILE),
-                                headers=headers, verify=constants.CA_FILE)
+                                headers=header, verify=constants.CA_FILE)
         
         logger.info(f"Response status code: {response.status_code}")
         logger.info(f"Response content: {response.content}")
@@ -228,6 +246,13 @@ class TestSessionServer:
         The server should return a 400 status code and indicate missing credentials in the error message.
         """
         logger.info("Starting test_login_tls_1_2_https_wrong_password")
+        secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
+        logger.debug(f"clent secret key:  {secret_key}")
+        totp = pyotp.TOTP(secret_key)
+        verification_code = totp.now()
+        
+        header = conftest.get_headers({"X-Verification-Code":verification_code})
+        
         session = requests.Session()
         session.mount('https://', conftest.CustomTLSAdapter(ssl_minimum_version=ssl.TLSVersion.TLSv1_1,
                                                             ssl_maximum_version=ssl.TLSVersion.TLSv1_2))
@@ -236,7 +261,7 @@ class TestSessionServer:
                                 constants.HTTPS_URL_LOGIN,
                                 json={"username": constants.username, "password": ''}, 
                                 cert=(constants.CERT_FILE, constants.KEY_FILE),
-                                headers=headers, verify=constants.CA_FILE)
+                                headers=header, verify=constants.CA_FILE)
         
         logger.info(f"Response status code: {response.status_code}")
         logger.info(f"Response content: {response.content}")
@@ -255,7 +280,7 @@ class TestSessionServer:
         session.mount('https://', conftest.CustomTLSAdapter(ssl_minimum_version=ssl.TLSVersion.TLSv1,
                                                             ssl_maximum_version=ssl.TLSVersion.TLSv1_1))
         with pytest.raises(requests.exceptions.SSLError) as excinfo:
-            response = session.post(constants.HTTPS_URL_LOGIN, data={"username": constants.username, "password": constants.password}, cert=(constants.CERT_FILE, constants.KEY_FILE), headers=headers, verify=constants.CA_FILE)
+            response = session.post(constants.HTTPS_URL_LOGIN, data={"username": constants.username, "password": constants.password}, cert=(constants.CERT_FILE, constants.KEY_FILE), headers=constants.headers, verify=constants.CA_FILE)
 
         logger.info(f"SSLError raised: {excinfo.value}")
         assert "tlsv1 alert protocol version" in str(excinfo.value)
@@ -271,7 +296,7 @@ class TestSessionServer:
                                 constants.HTTPS_WRONG_HOST_URL,
                                 json={"username": constants.email, "password": constants.password}, 
                                 cert=(constants.CERT_FILE, constants.KEY_FILE),
-                                headers=headers, verify=constants.CA_FILE)
+                                headers=constants.headers, verify=constants.CA_FILE)
         
         logger.debug(f"Response status code: {response.status_code}")
         logger.debug(f"Response content: {response.content}")
@@ -290,22 +315,29 @@ class TestSessionServer:
             ssl_maximum_version=ssl.TLSVersion.TLSv1_2
         ))
         
-        headers["Referer"] = "https://sessionid:8080/login/"
+        header = conftest.get_headers({"Referer":"https://sessionid:8080/login/"})
         
         for i in range(10): 
             logger.info(f"Attempt {i + 1}/10")
+            
+            secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
+            logger.debug(f"clent secret key:  {secret_key}")
+            totp = pyotp.TOTP(secret_key)
+            verification_code = totp.now()
+            
+            header["X-Verification-Code"] = verification_code
 
             response = session.post(
                 constants.HTTPS_URL_LOGIN,
                 json={"username": constants.username, "password": constants.password},
                 cert=(constants.CERT_FILE, constants.KEY_FILE),
-                headers=headers,
+                headers=header,
                 verify=constants.CA_FILE
             )
             
             csrf_token = response.cookies.get('csrftoken')
             
-            headers["X-CSRFToken"] = csrf_token
+            header["X-CSRFToken"] = csrf_token
 
             logger.info(f"Response content for attempt {i + 1}: {response.content}")
             
@@ -326,6 +358,13 @@ class TestSessionServer:
 
         logger.info("Starting test_logout_https")
         
+        secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
+        logger.debug(f"clent secret key:  {secret_key}")
+        totp = pyotp.TOTP(secret_key)
+        verification_code = totp.now()
+        
+        header = conftest.get_headers({"X-Verification-Code":verification_code})
+        
         session = requests.Session()
         session.mount('https://', conftest.CustomTLSAdapter(ssl_minimum_version=ssl.TLSVersion.TLSv1_1,
                                                             ssl_maximum_version=ssl.TLSVersion.TLSv1_2))
@@ -334,14 +373,14 @@ class TestSessionServer:
                             constants.HTTPS_URL_LOGIN,
                             json={"username": constants.username, "password": constants.password}, 
                             cert=(constants.CERT_FILE, constants.KEY_FILE),
-                            headers=headers, verify=constants.CA_FILE
+                            headers=header, verify=constants.CA_FILE
                             )
 
         assert login.status_code == 200
         logger.info("Login successful, status code: %d", login.status_code)
 
-        access_token = login.json().get('access_token')
-        auth_headers = conftest.get_headers(access_token)
+        access_token_header ={"Authorization": f"Bearer {login.json().get('access_token')}"}
+        auth_headers = conftest.get_headers(access_token_header)
 
         response = session.post(
                                 constants.HTTPS_URL_LOGOUT, 
@@ -367,6 +406,13 @@ class TestSessionServer:
 
         logger.info("Starting test_logout_wrong_token_https")
         
+        secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
+        logger.debug(f"clent secret key:  {secret_key}")
+        totp = pyotp.TOTP(secret_key)
+        verification_code = totp.now()
+        
+        header = conftest.get_headers({"X-Verification-Code":verification_code})
+        
         session = requests.Session()
         session.mount('https://', conftest.CustomTLSAdapter(ssl_minimum_version=ssl.TLSVersion.TLSv1_1,
                                                             ssl_maximum_version=ssl.TLSVersion.TLSv1_2))
@@ -375,13 +421,14 @@ class TestSessionServer:
                             constants.HTTPS_URL_LOGIN,
                             json={"username": constants.username, "password": constants.password}, 
                             cert=(constants.CERT_FILE, constants.KEY_FILE),
-                            headers=headers, verify=constants.CA_FILE
+                            headers=header, verify=constants.CA_FILE
                             )
 
         assert login.status_code == 200
         logger.info("Login successful, status code: %d", login.status_code)
 
-        auth_headers = conftest.get_headers("wrong token")
+        access_token_header ={"Authorization": "Bearer wrongToken"}
+        auth_headers = conftest.get_headers(access_token_header)
 
         logger.info("Attempting to logout with an invalid token")
         response = session.post(
@@ -411,6 +458,13 @@ class TestSessionServer:
 
         logger.info("Starting test_logout_wrong_cert_https")
         
+        secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
+        logger.debug(f"clent secret key:  {secret_key}")
+        totp = pyotp.TOTP(secret_key)
+        verification_code = totp.now()
+        
+        header = conftest.get_headers({"X-Verification-Code":verification_code})
+        
         session = requests.Session()
         session.mount('https://', conftest.CustomTLSAdapter(ssl_minimum_version=ssl.TLSVersion.TLSv1_1,
                                                             ssl_maximum_version=ssl.TLSVersion.TLSv1_2))
@@ -419,13 +473,14 @@ class TestSessionServer:
                             constants.HTTPS_URL_LOGIN,
                             json={"username": constants.username, "password": constants.password}, 
                             cert=(constants.CERT_FILE, constants.KEY_FILE),
-                            headers=headers, verify=constants.CA_FILE
+                            headers=header, verify=constants.CA_FILE
                             )
 
         assert login.status_code == 200
         logger.info("Login successful, status code: %d", login.status_code)
 
-        auth_headers = conftest.get_headers("wrong token")
+        access_token_header ={"Authorization": f"Bearer wrongToken"}
+        auth_headers = conftest.get_headers(access_token_header)
 
         logger.info("Attempting to logout with an invalid token")
         response = session.post(
@@ -453,6 +508,13 @@ class TestSessionServer:
 
         logger.info("Starting test_refresh_https")
         
+        secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
+        logger.debug(f"clent secret key:  {secret_key}")
+        totp = pyotp.TOTP(secret_key)
+        verification_code = totp.now()
+        
+        header = conftest.get_headers({"X-Verification-Code":verification_code})
+        
         session = requests.Session()
         session.mount('https://', conftest.CustomTLSAdapter(ssl_minimum_version=ssl.TLSVersion.TLSv1_1,
                                                             ssl_maximum_version=ssl.TLSVersion.TLSv1_2))
@@ -461,7 +523,7 @@ class TestSessionServer:
                                 constants.HTTPS_URL_LOGIN,
                                 json={"username": constants.username, "password": constants.password}, 
                                 cert=(constants.CERT_FILE, constants.KEY_FILE),
-                                headers=headers, verify=constants.CA_FILE)
+                                headers=header, verify=constants.CA_FILE)
 
         assert login.status_code == 200
         logger.info("Login successful, status code: %d", login.status_code)
@@ -469,7 +531,8 @@ class TestSessionServer:
         access_token = login.json().get('access_token')
         refresh_token = login.json().get('refresh_token')
         
-        auth_headers = conftest.get_headers(access_token)
+        access_token_header ={"Authorization": f"Bearer {access_token}"}
+        auth_headers = conftest.get_headers(access_token_header)
 
         response = session.post(
                                 constants.HTTPS_URL_REFRESH,
@@ -507,9 +570,16 @@ class TestSessionServer:
         logger.info(f"Sending {num_requests} concurrent login requests...")
         time.sleep(2)
         
+        secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
+        logger.debug(f"clent secret key:  {secret_key}")
+        totp = pyotp.TOTP(secret_key)
+        verification_code = totp.now()
+        
+        header = conftest.get_headers({"X-Verification-Code":verification_code})
+        
         with ThreadPoolExecutor(max_workers=num_requests) as executor:
             futures = [
-                executor.submit(self.send_request, session, constants.HTTPS_URL_LOGIN, constants.username, constants.password, headers)
+                executor.submit(self.send_request, session, constants.HTTPS_URL_LOGIN, constants.username, constants.password, header)
                 for _ in range(num_requests)
             ]
 
@@ -532,7 +602,9 @@ class TestSessionServer:
         
         # Perform logout using one of the access tokens
         logger.info("Attempting to logout")
-        auth_headers = conftest.get_headers(next(iter(access_tokens)))
+        access_token_header ={"Authorization": f"Bearer {next(iter(access_tokens))}"}
+        auth_headers = conftest.get_headers(access_token_header)
+        
         response = session.post(constants.HTTPS_URL_LOGOUT, cert=(constants.CERT_FILE, constants.KEY_FILE), headers=auth_headers, verify=constants.CA_FILE)
         assert response.status_code == 200
         
@@ -556,6 +628,13 @@ class TestSessionServer:
         
         for i in range(10): 
             logger.info(f"Attempt {i + 1}/10")
+            
+            secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
+            logger.debug(f"clent secret key:  {secret_key}")
+            totp = pyotp.TOTP(secret_key)
+            verification_code = totp.now()
+            
+            header = conftest.get_headers({"X-Verification-Code":verification_code})
         
             session = requests.Session()
             session.mount('https://', conftest.CustomTLSAdapter(ssl_minimum_version=ssl.TLSVersion.TLSv1_1,
@@ -565,7 +644,7 @@ class TestSessionServer:
                                     constants.HTTPS_URL_LOGIN,
                                     json={"username": constants.username, "password": constants.password}, 
                                     cert=(constants.CERT_FILE, constants.KEY_FILE),
-                                    headers=headers, verify=constants.CA_FILE)
+                                    headers=header, verify=constants.CA_FILE)
 
             assert login.status_code == 200
             logger.info("Login successful, status code: %d", login.status_code)
@@ -575,7 +654,8 @@ class TestSessionServer:
             
             # Step 2: Refresh the token
             logger.info("Attempting token refresh")
-            auth_headers = conftest.get_headers(access_token)
+            access_token_header ={"Authorization": f"Bearer {access_token}"}
+            auth_headers = conftest.get_headers(access_token_header)
 
             refresh = session.post(
                                     constants.HTTPS_URL_REFRESH,
@@ -591,7 +671,8 @@ class TestSessionServer:
             
             # Step 3: Logout
             logger.info("Attempting logout")
-            auth_headers = conftest.get_headers(access_token)
+            access_token_header ={"Authorization": f"Bearer {access_token}"}
+            auth_headers = conftest.get_headers(access_token_header)
 
             response = session.post(
                                     constants.HTTPS_URL_LOGOUT, 
@@ -618,6 +699,13 @@ class TestSessionServer:
         for i in range(3):
             logger.info(f"Attempt {i + 1}: Sending login request with incorrect password.")
             
+            secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
+            logger.debug(f"clent secret key:  {secret_key}")
+            totp = pyotp.TOTP(secret_key)
+            verification_code = totp.now()
+            
+            header = conftest.get_headers({"X-Verification-Code":verification_code})
+            
             session = requests.Session()
             session.mount('https://', conftest.CustomTLSAdapter(ssl_minimum_version=ssl.TLSVersion.TLSv1_1,
                                                                 ssl_maximum_version=ssl.TLSVersion.TLSv1_2))
@@ -625,18 +713,25 @@ class TestSessionServer:
                                 constants.HTTPS_URL_LOGIN,
                                 json={"username": constants.username, "password": f'wrongpass{i}'}, 
                                 cert=(constants.CERT_FILE, constants.KEY_FILE),
-                                headers=headers, verify=constants.CA_FILE)
+                                headers=header, verify=constants.CA_FILE)
             
             logger.debug(f"Response status code: {response.status_code}")
             logger.debug(f"Response content: {response.content}")
             
             time.sleep(3)
+            
+        secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
+        logger.debug(f"clent secret key:  {secret_key}")
+        totp = pyotp.TOTP(secret_key)
+        verification_code = totp.now()
+        
+        header = conftest.get_headers({"X-Verification-Code":verification_code})
 
         response = session.post(
                                 constants.HTTPS_URL_LOGIN,
                                 json={"username": constants.username, "password": constants.password}, 
                                 cert=(constants.CERT_FILE, constants.KEY_FILE),
-                                headers=headers, verify=constants.CA_FILE)
+                                headers=header, verify=constants.CA_FILE)
         
         logger.debug(f"Response status code: {response.status_code}")
         logger.debug(f"Response content: {response.content}")

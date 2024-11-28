@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'session',
     'userauth', 
     "django_celery_beat",
+    "djcelery_email",
 ]
 
 REST_FRAMEWORK = {
@@ -216,6 +217,7 @@ MAX_EXPIRATION_HOURS = 2
 CREATED_TOLERANCE_SECONDS = 5
 
 CACHE_TIMEOUT = 600
+TOKEN_TIMEOUT = 120
 
 SERVER_SALT = config("SERVER_SALT")
 
@@ -256,6 +258,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'delete_expired_tokens',
         'schedule': crontab(minute='0', hour='0', day_of_week='*'), 
     },
+    'remove_old_used_tokens-every-3-minute': {
+        'task': 'remove_old_used_tokens',
+        'schedule': crontab(minute='*/3'), 
+    },
 }
 
 
@@ -263,6 +269,13 @@ AUTHENTICATION_BACKENDS = [
     'userauth.backends.UsernameOrEmailBackend', 
     "django.contrib.auth.backends.ModelBackend",
 ]
+
+EMAIL_BACKEND = "djcelery_email.backends.CeleryEmailBackend"
+EMAIL_HOST = config("EMAIL_HOST")
+EMAIL_PORT = config("EMAIL_PORT")
+DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL")
+
+DOMAIN = config("DOMAIN")
 
 LOGGING = {
     'version': 1,

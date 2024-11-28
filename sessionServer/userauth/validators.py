@@ -7,6 +7,34 @@ import logging
 
 logger = logging.getLogger("django")
 
+def validate_signed_token_format(token: str, min_length=10, max_length=255) -> None:
+    """
+    Validates that a token:
+    - Contains only valid characters: letters, numbers, '-', '_', ':', and '.'.
+    - Includes a ':' separating the signed value and the hash.
+    - Has a length within the specified range.
+    """
+    # Check length
+    if not (min_length <= len(token) <= max_length):
+        raise ValidationError(
+            _(f"Token must be between {min_length} and {max_length} characters long."),
+            code='invalid_token_length',
+        )
+
+    # Check characters
+    if not re.fullmatch(r'^[A-Za-z0-9_\-:]+$', token):
+        raise ValidationError(
+            _("Token must contain only valid characters: letters, numbers, '-', '_', and ':'"),
+            code='invalid_token_format',
+        )
+
+    # Check structure
+    if ':' not in token:
+        raise ValidationError(
+            _("Token must include a ':' separating the value and the hash."),
+            code='invalid_token_structure',
+        )
+
 class CustomPasswordValidator:
     """
     A custom password validator that enforces strong password requirements.

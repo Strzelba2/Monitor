@@ -2,6 +2,7 @@ from celery import shared_task
 from .utils import AllowedUsersStore
 from oauth2_provider.models import AccessToken, RefreshToken
 from django.utils import timezone
+from .models import UsedToken
 from .signals import *
 
 import logging
@@ -52,5 +53,22 @@ def delete_expired_tokens()-> None:
         logger.info(f"Deleted {deleted_refresh_tokens_count} orphaned refresh tokens.")
     except Exception as e:
         logger.error(f"An error occurred while deleting expired tokens: {e}", exc_info=True)
+        
+        
+@shared_task(name="remove_old_used_tokens")
+def remove_old_used_tokens()-> None:
+    """
+    Remove UsedToken entries older than 3 minutes.
+    """
+    
+    logger.info("remove_old_used_token proccess")
+    
+    threshold = timezone.now() - timezone.timedelta(minutes=3)
+    old_tokens = UsedToken.objects.filter(used_at__lt=threshold)
+    count = old_tokens.count()
+    logger.info(f"amount old tokens : {count}")
+    if count > 0:
+        old_tokens.delete()
+        logger.info("Tokens hasc been removed successfully")
         
 

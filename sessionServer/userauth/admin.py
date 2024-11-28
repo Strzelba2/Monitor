@@ -4,11 +4,16 @@ from django.urls import reverse
 from django.utils.safestring import mark_safe
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.translation import gettext_lazy as _
-
+from .models import UsedToken
 from .forms import UserChangeForm, UserCreationForm
+
+from django.core.signing import TimestampSigner
+from django.utils.http import urlencode
+from django.utils.html import format_html
 
 User = get_user_model()
 
+admin.site.register(UsedToken)
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
@@ -30,6 +35,7 @@ class UserAdmin(BaseUserAdmin):
         "first_name",
         "last_name",
         "username_link",
+        "send_qr_action",
         "is_superuser"
     ]
     
@@ -39,7 +45,7 @@ class UserAdmin(BaseUserAdmin):
     search_fields = ["email", "first_name", "last_name"]
     list_filter = ('is_staff', 'is_active')
     
-    def username_link(self, obj) -> str:
+    def username_link(self, obj: object) -> str:
         """
         Returns a clickable link for the username, pointing to the user's change page.
 
@@ -55,7 +61,30 @@ class UserAdmin(BaseUserAdmin):
     
     username_link.short_description = "Username"
     username_link.allow_tags = True
+    
+    def send_qr_action(self, obj: object) -> str:
+        """
+        Generate an HTML link for triggering the "Generate QR Code" action in the admin interface.
 
+        This method creates a link to the 'qrlink' endpoint with the given object's user ID
+        and wraps it in HTML to display a styled button.
+
+        Args:
+            obj (object): The object instance for which the QR code generation link is created.
+                        Typically, this is an instance of a model in the Django admin interface.
+
+        Returns:
+            str: A formatted HTML string representing the QR code generation button.
+        """
+        # Generate the URL for the 'qrlink' view with the user ID as a keyword argument.
+        link = reverse('qrlink', kwargs={'user_id': obj.id})
+        
+        # Return an HTML string for a button linking to the generated URL.
+        return format_html(f'<a class="btn btn-primary" style="margin-right: 5px; margin-left: 5px;" href="{link}">Generate QR Code</a>')
+ 
+    send_qr_action.short_description = "Send QR Code"
+    send_qr_action.allow_tags = True
+    
     # Order users by email in the list view
     ordering = ["email"]
     
