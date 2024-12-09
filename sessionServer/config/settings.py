@@ -69,11 +69,11 @@ REST_FRAMEWORK = {
 }
 
 OAUTH2_PROVIDER = {
-    'ACCESS_TOKEN_EXPIRE_SECONDS': 36000,
+    'ACCESS_TOKEN_EXPIRE_SECONDS': 9000,
     'AUTHORIZATION_CODE_EXPIRE_SECONDS': 600,
     'APPLICATION_MODEL': 'oauth2_provider.Application',
     'GRANT_MODEL': 'oauth2_provider.Grant',
-    'REFRESH_TOKEN_EXPIRE_SECONDS': 1209600,
+    'REFRESH_TOKEN_EXPIRE_SECONDS': 10800,
     'SCOPES': {'read': 'Read scope', 'write': 'Write scope', 'groups': 'Access to your groups'},
     'OAUTH2_BACKEND_CLASS': 'oauth2_provider.oauth2_backends.OAuthLibCore',
     'OAUTH2_VALIDATOR_CLASS': 'oauth2_provider.oauth2_validators.OAuth2Validator',
