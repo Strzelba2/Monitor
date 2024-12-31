@@ -112,19 +112,17 @@ class LoginAPIView(views.APIView,TokenView):
         logger.info("Response data created successfully.")
         return response_data
     
-    def logout_old_sessions(self, user: object, current_session_key: str) -> None:
+    def logout_old_sessions(self, user: object, request) -> None:
         """
         Logout old user sessions except the current one.
         
         :param user: Authenticated user instance.
         :param current_session_key: Current session key to retain.
         """
-        sessions = Session.objects.filter(session_data__contains=user.pk)
-        for session in sessions:
-            logger.debug(f"Found session_key: {session.session_key}")
-            if session.session_key != current_session_key:
-                session.delete()
-                logger.debug(f"Old session {session.session_key} deleted successfully")
+        Session.objects.filter(session_data__contains=user.pk).exclude(
+                session_key=request.session.session_key
+            ).delete()
+                        
 
     @classmethod
     def get_decrypted_secret(self, username: str, hashed_secret: str) -> str:
@@ -214,9 +212,22 @@ class LoginAPIView(views.APIView,TokenView):
         
         else:
             if user is not None:
-                self.logout_old_sessions(user,request.session.session_key)
-                login(request, user)
-                logger.info("Logged in successfully")
+                if request.session.session_key:
+                    logger.info(f" login with session_key {request.session.session_key}")
+                    self.logout_old_sessions(user,request)
+                    login(request, user)
+                    logger.info("Logged in successfully")
+                else:
+                    logger.info("first login")
+                    user_lock_key = f"login_lock:{request.user.id}"
+                    if cache.get(user_lock_key):
+                        return Response({'error': 'Someone is already in the process of logging in'}, status=401)
+                    
+                    cache.set(user_lock_key, "locked", 5)
+                    
+                    login(request, user)
+                    cache.delete(user_lock_key)
+                
 
         # Reset login attempts on successful login
         cache.delete(login_attempts_key)

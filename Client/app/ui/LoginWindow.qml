@@ -2,6 +2,7 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 
 import "../../resources/components"
+import "../../resources/js/utils.js" as Utils
 
 Item {
     id:loginLoader
@@ -55,6 +56,7 @@ Item {
         onAccepted:
         {
             console.log("Username field: Enter key pressed.");
+            Utils.attemptLogin();
         }
     }
 
@@ -72,7 +74,8 @@ Item {
         echoMode: TextInput.Password
         onAccepted:
         {
-             console.log("Password field: Enter key pressed.");
+            console.log("Password field: Enter key pressed.");
+            Utils.attemptLogin();
         }
     }
 
@@ -177,6 +180,7 @@ Item {
             anchors.fill: parent
             onClicked:{
                 console.log("Login button clicked.");
+                Utils.attemptLogin();
             }
         }
     }
@@ -187,11 +191,5 @@ Item {
         btnLogin.enabled = !freeze;
         textUsername.enabled = !freeze;
         rememberMe.enabled =  !freeze;
-    }
-
-    function get_rememberMe (){
-        console.log("Getting 'Remember me' state:", rememberMe.checked);
-        return rememberMe.checked;
-    }
-
+    } 
 }

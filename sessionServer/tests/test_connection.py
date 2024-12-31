@@ -571,7 +571,7 @@ class TestSessionServer:
         time.sleep(2)
         
         secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
-        logger.debug(f"clent secret key:  {secret_key}")
+        logger.info(f"client secret key:  {secret_key}")
         totp = pyotp.TOTP(secret_key)
         verification_code = totp.now()
         
@@ -584,12 +584,14 @@ class TestSessionServer:
             ]
 
             for future in as_completed(futures):
-                logger.debug(f"task completed with result {future.result()}")
-                logger.debug(f"Response status code: {future.result().status_code}")
-                logger.debug(f"Response content: {future.result().content}")
+                logger.info(f"task completed with result {future.result()}")
+                logger.info(f"Response status code: {future.result().status_code}")
+                logger.info(f"Response content: {future.result().content}")
+                logger.info(f"Response cookiesL  {future.result().cookies}")
                 results.append(future.result())
 
         for result in results:
+            logger.info(f"completed result: {result}")
             json_data = result.json()
             if result.status_code == 200:
                 access_tokens.add(json_data['access_token'])

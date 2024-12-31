@@ -16,7 +16,7 @@ secret_timeout = 2
 
 client_id = 'test_id'
 username = 'testUserApache'
-password = 'test!pass@.word'
+password = 'test!pass@.word2D'
 lastname = 'testlastname'
 firstname = 'testfirstname'
 email = 'testfirst@email.com'

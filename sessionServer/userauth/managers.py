@@ -165,3 +165,18 @@ class UserManager(DjangoUserManager):
 
         logger.info("Superuser creation in progress.")
         return self._create_user(username, email, password, **extra_fields)
+    
+    def get_or_create(self, **kwargs):
+        password = kwargs.pop("password", None)
+        user, created = super().get_or_create(**kwargs)
+
+        if created and password:
+            try:
+                validate_password(password)
+                user.set_password(password)
+                user.save()
+            except ValidationError as e:
+                user.delete()
+                raise ValueError(f"Password validation error: {', '.join(e.messages)}")
+
+        return user,created

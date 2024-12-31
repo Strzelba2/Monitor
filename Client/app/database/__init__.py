@@ -1,24 +1,24 @@
-from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
+from config.config import Config
 import logging
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = "sqlite:///app_data.db"
-
-engine = create_engine(DATABASE_URL, echo=False)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = create_async_engine(Config.DATABASE_URL, echo=False)
+AsyncSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession, expire_on_commit=False)
 Base = declarative_base()
 
-def init_db():
+async def init_db():
     """
-    Initializes the database by creating all necessary tables.
+    Initializes the database asynchronously by creating all necessary tables.
     """
     try:
         # Check if tables exist and create them if not
-        Base.metadata.create_all(bind=engine)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
         logger.info("Database initialized successfully.")
     except OperationalError as e:
         logger.error(f"Database initialization failed: {e}")

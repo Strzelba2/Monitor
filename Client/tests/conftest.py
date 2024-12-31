@@ -1,27 +1,26 @@
 import pytest
-# from pytestqt.qt_compat import QtQuick
 from PyQt6.QtGui import QGuiApplication
-from PyQt6.QtCore import QUrl, Qt, QObject 
-from PyQt6.QtQuick import QQuickView ,QQuickWindow
+from PyQt6.QtCore import QUrl,QObject
 from PyQt6.QtQml import QQmlApplicationEngine
 
 import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from app.viewmodels.session_viewmodel import SessionViewModel
+from app.database.settings_db_manager import SettingsDBManager
 from app.database import init_db
 
 import logging
 logger = logging.getLogger(__name__)
 
-@pytest.fixture(scope="function", autouse=True)
-def setup_test_db():
+@pytest.fixture(scope="function")
+async def setup_test_db():
     """
     Fixture to initialize the test database before each test.
     This ensures a clean state for the database during tests.
     """
     logger.info("Initializing test database.")
-    init_db()
+    await init_db()
     yield
     
     logger.info("Test database setup complete.")
@@ -40,7 +39,7 @@ def app():
     app.quit()
 
 @pytest.fixture(scope="function")
-def app_view(app):
+async def app_view(app):
     """
     Fixture to set up the QML view and provide access to the root object, engine, and session view model.
     Ensures the engine and view are properly initialized and cleaned up after the test.
@@ -56,6 +55,7 @@ def app_view(app):
     engine = QQmlApplicationEngine()
     
     sessionview = SessionViewModel()
+    await sessionview.initialize_managers(SettingsDBManager)
     
     logger.info(f"Session view model initialized: {sessionview}")
 

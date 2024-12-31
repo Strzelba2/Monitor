@@ -20,6 +20,7 @@ Window {
     property bool freezeWindow: false
     property bool criticalError: false
     property color popupText: "red"
+    property int secondsRemaining: 30
     property var popupMain: null 
 
     // Function to change the image opacity
@@ -27,6 +28,7 @@ Window {
             image.opacity = newOpacity;
     }
 
+    
     // Background image with drag functionality
     Image {
         id: image
@@ -73,6 +75,30 @@ Window {
         }
     }
 
+    Timer {
+        id: popupTimer
+        interval: 1000 
+        repeat: true
+        running: false
+        onTriggered: {
+            loginWindow.secondsRemaining -= 1;
+            console.log("popupTimer.onTriggered");
+            if (myLoader.status === Loader.Ready) {
+                if (myLoader.source.toString() === "app/ui/LoadWindow.qml")
+                console.log("true",loginWindow.secondsRemaining)
+                {
+                    var loadedComponent = myLoader.item;
+                    loadedComponent.updateCountdown(loginWindow.secondsRemaining.toString());
+                }
+            }
+
+            if (loginWindow.secondsRemaining <= 0) {
+
+                loginWindow.secondsRemaining = 30;
+            }
+        }
+    }
+    
     // Handle window dimension changes
     Connections {
         target: loginWindow
@@ -88,9 +114,13 @@ Window {
 
     // Listen for session view signals
     Connections {
-        target: sessionview
+        target: sessionview.error_manager
         function onShowError(error) {
             console.error("Error received from session view:", error);
+            if (myLoader.source.toString() === "app/ui/LoadWindow.qml"){
+                loginWindow.stopPopupTimer();
+                myLoader.source = "app/ui/LoginWindow.qml"
+            }
             showPopup(error);
         }
         function onShowCriticalError(error){
@@ -98,7 +128,29 @@ Window {
             loginWindow.criticalError = true
             showPopup(error);
         }
+    }
 
+    Connections {
+        target: appstatus
+        function onShowAppStateChanged() {
+            var state = appstatus.get_state();
+            console.log("onShowAppStateChanged:", state);
+            if (state == "two_factory"){
+                console.log("state two factore " )
+                myLoader.source = "app/ui/Totp.qml"
+            }else if( state == "in_request"){
+                myLoader.source = "app/ui/LoadWindow.qml"
+                popupTimer.start();
+            }else if( state == "login_failed"){
+                loginWindow.stopPopupTimer();
+                myLoader.source = "app/ui/LoginWindow.qml"   
+            }else if( state == "logged_in"){
+                loginWindow.stopPopupTimer();
+                loginWindow.openAppWindow()  
+            }else if( state == "logged_out"){
+                myLoader.source = "app/ui/LoginWindow.qml"   
+            }
+        }
     }
 
     // Function to display a popup with error messages
@@ -136,4 +188,48 @@ Window {
             console.error("Failed to create popup instance.");
         }
     }
+
+    function changeStaysOnTopHint(){
+        console.log( " changeStaysOnTopHint " );
+        flags &= ~Qt.WindowStaysOnTopHint;
+    }
+
+    function addWindowStaysOnTopHint() {
+        loginWindow.flags = Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint;
+    }
+
+    function showWindow(){
+        console.log("showWindow");
+        visible = true;
+        loginWindow.addWindowStaysOnTopHint();
+        myLoader.source = "app/ui/LoginWindow.qml";
+    }
+
+    function openAppWindow() {
+        console.log("loginWindow.openCompanyWindow");
+        changeStaysOnTopHint();
+        loginWindow.visible = false
+        var component = Qt.createComponent("app/ui/App.qml");
+        if (component.status === Component.Ready) {
+            var appWindow = component.createObject(loginWindow, {"loginWindowRef": this});
+            appWindow.show();
+        } else {
+            console.error("Cannot load App.qml", component.errorString());
+        }
+    }
+
+    function stopPopupTimer() {
+        console.log("loginWindow.stopPopupTimer")
+        popupTimer.stop();
+    }
+
+    onClosing: {
+        console.log("Window.onClosing processed");
+        if(popupTimer.running){
+            console.log("pupupTimer is running");
+            loginWindow.stopPopupTimer();
+
+        }
+    }
+
 }

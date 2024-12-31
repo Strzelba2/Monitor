@@ -15,6 +15,7 @@ class AwareDateTime(TypeDecorator):
     as UTC-aware.
     """
     impl = DateTime
+    cache_ok = True
 
     def process_bind_param(self, value: datetime, dialect) -> datetime:
         """

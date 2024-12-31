@@ -61,7 +61,7 @@ def remove_old_used_tokens()-> None:
     Remove UsedToken entries older than 3 minutes.
     """
     
-    logger.info("remove_old_used_token proccess")
+    logger.info("remove_old_used_token processed")
     
     threshold = timezone.now() - timezone.timedelta(minutes=3)
     old_tokens = UsedToken.objects.filter(used_at__lt=threshold)

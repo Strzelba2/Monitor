@@ -146,6 +146,7 @@ Window {
             myLoader.item.freezeComponents(false); 
             sessionview.refresh_state();
             loginWindow.freezeWindow = false;
+            loginWindow.changeImageOpacity(1);
             loginWindow.popupMain = null;
             if (loginWindow.criticalError) {
                 console.info("Critical error detected. Closing login window.");

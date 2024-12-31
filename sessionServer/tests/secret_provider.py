@@ -172,6 +172,7 @@ class SecretHandler(http.server.BaseHTTPRequestHandler):
         HTTP handler for managing secret-related requests.
         """
         self.hashed_secret = hashed_secret 
+        print("secretprovider success")
         super().__init__(*args, **kwargs)
         
     def do_GET(self):

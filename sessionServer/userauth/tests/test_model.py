@@ -7,6 +7,8 @@ from django.contrib.auth import authenticate
 from userauth.models import User,UsedToken, handle_redis_connected, handle_redis_connection_failed
 import logging
 
+from django.contrib.auth import get_user_model
+
 logger = logging.getLogger("test_logger")
 
 
@@ -71,6 +73,31 @@ class UserModelTest(TestCase):
         self.assertFalse(User.is_user_allowed(self.user_data["username"]))
         
         logger.info("Test passed: test_create_user_with_short_password")
+        
+    def test_get_user_model_correct_password(self):
+        """
+        Test that creating a user with a correct password.
+        """
+        logger.info("Starting test: test_get_user_model_correct_password")
+        self.user_data["password"] = "test!pass@.word2D"
+        user, created = get_user_model().objects.get_or_create(**self.user_data)
+        self.assertTrue(created)
+        self.assertIsNotNone(user)
+        
+        logger.info("Test passed: test_get_user_model_correct_password")
+        
+    def test_get_user_model_wrong_password(self):
+        """
+        Test that creating a user with a wrongt password raises a ValueError.
+        """
+        logger.info("Starting test: test_get_user_model_wrong_password")
+        self.user_data["password"] = "test!pass@.word"
+        with self.assertRaises(ValueError) as context:
+            user, created = get_user_model().objects.get_or_create(**self.user_data)
+        
+        self.assertIn("Password validation error", str(context.exception))
+        
+        logger.info("Test passed: test_get_user_model_wrong_password")
 
     def test_create_user_without_password(self):
         """

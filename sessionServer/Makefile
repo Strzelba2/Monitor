@@ -33,3 +33,6 @@ tests:
 
 create_cert:
 	docker compose -f docker-compose.yml run --rm web python manage.py create_cert testUserApache
+
+get_secret_key:
+	docker compose -f docker-compose.yml run --rm web python manage.py get_client_secret testUserApache

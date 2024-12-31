@@ -30,7 +30,7 @@ class BaseManagerError(Exception):
         """
         return self.args[0]
 
-class SessionManagerError(BaseManagerError):
+class SessionDBManagerError(BaseManagerError):
     """
     Exception raised for errors occurring in the session manager.
 
@@ -42,7 +42,7 @@ class SessionManagerError(BaseManagerError):
     """
     pass
     
-class TokenManagerError(BaseManagerError):
+class TokenDBManagerError(BaseManagerError):
     """
     Exception raised for errors occurring in the token manager.
 
@@ -54,7 +54,7 @@ class TokenManagerError(BaseManagerError):
     """
     pass
     
-class SettingsManagerError(BaseManagerError):
+class SettingsDBManagerError(BaseManagerError):
     """
     Exception raised for errors occurring in the settings manager.
 

@@ -24,19 +24,20 @@ class Command(BaseCommand):
             logger.debug(f"User '{username}' already exists.")
             user, created = existing_user, False
         else:
-            user, created = get_user_model().objects.get_or_create(
+            try:
+                user, created = get_user_model().objects.get_or_create(
                                                                 username=username,
                                                                 email = email,
                                                                 first_name= firstname,
                                                                 last_name = lastname,
                                                                 )
-        if created:
-            user.set_password(password)
-            user.save()
-            logger.debug(f"User '{username}' created successfully.")
-
-        else:
-            logger.debug(f"User '{username}' already exists.")
+                if created:
+                    logger.debug(f"User '{username}' created successfully.")
+                else:
+                    logger.debug(f"User '{username}' already exists.")
+            except Exception as e:
+                logger.error(f"User creation with error: {e}")
+        
             
         application = Application.objects.filter(client_id=client_id).exists()
         

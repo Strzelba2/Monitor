@@ -5,4 +5,5 @@ sessionServer/static/admin
 sessionServer/static/jazzmin
 sessionServer/static/rest_framework
 sessionServer/static/vendor
+sessionServer/loki/wal
 Client/setup.py
