@@ -73,7 +73,7 @@ class LoginAPIView(views.APIView,TokenView):
         logger.debug(f"verification_code: {verification_code}")
         totp = pyotp.TOTP(secret_key)
 
-        if not verification_code or not totp.verify(verification_code):
+        if not verification_code or not totp.verify(verification_code, valid_window=1):
             return formatted_response(
                 request,
                 {'error': 'Invalid or expired code'},

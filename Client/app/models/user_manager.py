@@ -1,5 +1,6 @@
 from PyQt6.QtCore import QObject,pyqtSlot
 from qasync import asyncSlot,asyncClose 
+from typing import Dict
 
 # from app.models.session_manager import SessionManager
 from app.models.token_manager import TokenManager
@@ -49,7 +50,7 @@ class UserManager(ExceptionHandlerMixin, SignalManager):
         if cls._instance:
             logger.info(f"UserManage instance exist:  {instance}")
             try:
-                instance._token_manager.stop_refresh_timer()
+                await instance._token_manager.stop_refresh_timer()
                 logger.info("refresh token has been stopped")
                 tokens = await instance._token_manager.get_all_tokens()
                 if tokens:
@@ -156,7 +157,7 @@ class UserManager(ExceptionHandlerMixin, SignalManager):
                     self._error_manager.track_exception(self.__class__.__name__, self.refresh_token.__name__, False)
             else:
                 try:
-                    self._token_manager.stop_refresh_timer()
+                    await self._token_manager.stop_refresh_timer()
                     await self._token_manager.clear_tokens()
                     self._token_manager.clear_secret_key()
                 except Exception as e:
@@ -206,7 +207,7 @@ class UserManager(ExceptionHandlerMixin, SignalManager):
             if kwargs["status"] == 200:
                 logger.info("Logout successful...")
                 try:
-                    self._token_manager.stop_refresh_timer()
+                    await self._token_manager.stop_refresh_timer()
                     await self._token_manager.clear_tokens()
                     self._token_manager.clear_secret_key()
                 except Exception as e:
@@ -235,6 +236,26 @@ class UserManager(ExceptionHandlerMixin, SignalManager):
         except Exception as e:
             logger.error(f"Failed to clear tokens and session: {e}")
             raise
+        
+    async def get_all_tokens(self)-> Dict[str, str]:
+        """
+        Retrieve all tokens managed by the token manager.
+
+        This asynchronous method interacts with the token manager to fetch all currently available tokens. 
+        In case of an error during the retrieval process, an error is logged, and the exception is re-raised.
+
+        Returns:
+            dict: A dictionary containing all tokens, where the keys are token identifiers and the values are the tokens themselves.
+
+        Raises:
+            Exception: Any exception encountered while attempting to retrieve tokens.
+        """
+        try:
+            tokens = await self._token_manager.get_all_tokens()      
+        except Exception as e:
+            logger.error(f"Failed to get tokens and session: {e}")
+            raise
+        return tokens
      
     @asyncClose   
     async def close_clear_tokens_and_session(self) -> None:

@@ -4,6 +4,10 @@ from app.models.event_manager import CentralQueueManager
 from app.network.Session_client import SessionClient
 from app.models.user_manager import UserManager
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class SignalConnectionManager:
     """
@@ -36,6 +40,7 @@ class SignalConnectionManager:
         This ensures that events are properly communicated and handled across the 
         different components of the application.
         """
+        logger.info("Started to connect signals")
         # Application state signals
         self.session_view.appStateChanged.connect(self.app_status.set_state)
     
@@ -65,5 +70,7 @@ class SignalConnectionManager:
         self.event_manager.handle_exception_event.connect(self.session_view.cqm_process_exception)
         self.event_manager.handle_exception_event.connect(self.user_manager.cqm_process_exception)
         self.event_manager.handle_exception_event.connect(self.session_client.cqm_process_exception)
+
+        logger.info("Connecting signals successful")
 
         

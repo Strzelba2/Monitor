@@ -10,7 +10,7 @@ HTTPS_URL_LOGIN = "https://SessionID:8080/login/"
 HTTPS_URL_LOGOUT = "https://SessionID:8080/logout/"
 HTTPS_URL_REFRESH = "https://SessionID:8080/refresh/"
 HTTPS_WRONG_HOST_URL = "https://127.0.0.1:8080/login/"
-LOKI_URL = 'http://127.0.0.1:3100/loki/api/v1/push'
+LOKI_URL = 'http://loki:3100/loki/api/v1/push'
 
 secret_timeout = 2
 
@@ -28,9 +28,9 @@ wrong_pass = "Czesław21"
 
 stream_labels_secret = {"job": "secret_provider", "instance": "secret-instance-1"}
 
-SERVER_FILE =os.path.join(BASE_DIR,"cert","new","server.crt") 
-SERVER_KEY_FILE = os.path.join(BASE_DIR,"cert","new","server.key") 
-SERVER_CA_FILE = os.path.join(BASE_DIR,"cert","new","combined_ca.crt") 
+SERVER_FILE =os.path.join(BASE_DIR,"sessionServer","cert","new","server.crt") 
+SERVER_KEY_FILE = os.path.join(BASE_DIR,"sessionServer","cert","new","server.key") 
+SERVER_CA_FILE = os.path.join(BASE_DIR,"sessionServer","cert","new","combined_ca.crt") 
 
 CERT_FILE =os.path.join(BASE_DIR,"cert","new","client.crt") 
 KEY_FILE = os.path.join(BASE_DIR,"cert","new","client.key") 

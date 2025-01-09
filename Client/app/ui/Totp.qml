@@ -7,6 +7,7 @@ Item {
 
     CustomButton {
         id: btnClose
+        objectName: "btnClose"
         width: 30
         height: 30
         opacity: 1
@@ -34,6 +35,7 @@ Item {
 
     CustomTextField {
         id: totpcode
+        objectName: "totpcode"
         x: 50
         y: 185
         opacity: 1
@@ -47,6 +49,7 @@ Item {
 
     CustomButton {
         id: totpVerify
+        objectName: "totpVerify"
         width: 320
         height: 50
         opacity: 1

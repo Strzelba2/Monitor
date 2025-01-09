@@ -85,6 +85,7 @@ Window {
 
         CustomButton {
             id: popupButton
+            objectName: "popupButton"
             text: "OK"
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 10

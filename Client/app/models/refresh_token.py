@@ -81,7 +81,7 @@ class RefreshTokenManager:
         
         self.is_running = True  
         
-    def stop(self) -> None:
+    async def stop(self) -> None:
         """
         Stops the token refresh process if it is running.
         """
@@ -90,6 +90,7 @@ class RefreshTokenManager:
             self.is_running = False
             try:
                 self._task.cancel()
+                await self._task
                 logger.info("Token refresh task cancelled successfully.")
             except asyncio.CancelledError:
                 logger.warning(f"Task {self._task} was already cancelled.")

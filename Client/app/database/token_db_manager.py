@@ -267,6 +267,9 @@ class TokenDManager(BaseManager, metaclass=SingletonMeta):
             raise ValueError(f"Invalid token type: {token_type}")
         
         async with self.session_factory() as session:
+            logger.info("start  cleaar tokens")
+            logger.info(f"Session is active: {session.is_active}")
+            logger.info(f"Database connection is open: {session.connection() is not None}")
             try:
                 async with session.begin():
                     await self._clear_token(token_type,session)
@@ -285,6 +288,10 @@ class TokenDManager(BaseManager, metaclass=SingletonMeta):
         """
         async with self.session_factory() as session:
             try:
+                logger.info("start select tokens")
+                logger.info(f"Session is active: {session.is_active}")
+                logger.info(f"Database connection is open: {session.connection() is not None}")
+                
                 access_tokens_result = await session.execute(select(TokenData))
                 refresh_tokens_result = await session.execute(select(RefreshTokenData))
 

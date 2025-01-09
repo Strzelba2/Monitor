@@ -133,6 +133,20 @@ services:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1 
 
+  secret_provider:
+    build:
+      context: .
+      dockerfile: /docker/secret_provider/Dockerfile
+    image: secret_provider:latest
+    container_name: secret_provider
+    working_dir: /sessionServer
+    depends_on:
+      - web
+    ports:
+      - "9876:9876"
+    volumes:
+      - ./tests/logs:/sessionServer/logs
+
 volumes:
   grafana-storage:
   postgres-data:

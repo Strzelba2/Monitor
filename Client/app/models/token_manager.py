@@ -124,7 +124,7 @@ class TokenManager():
             Exception: For unexpected errors.
         """
         try:
-            access_token = self._token_db_manager.get_valid_token("access")
+            access_token = await self._token_db_manager.get_valid_token("access")
             return access_token
         except ValueError as e:
             logger.error(f"Invalid token type requested: {e}")
@@ -188,14 +188,14 @@ class TokenManager():
             logger.exception(f"Unexpected error while starting refresh timer: {e}")
             raise
         
-    def stop_refresh_timer(self) -> None:
+    async def stop_refresh_timer(self) -> None:
         """
         Stop the token refresh timer.
 
         Logs the success or failure of the operation.
         """
         try:
-            self._refresh_token.stop()
+            await self._refresh_token.stop()
             logger.info("Token refresh timer stopped successfully.")
         except Exception as e:
             logger.exception(f"Unexpected error while stopping refresh timer: {e}")

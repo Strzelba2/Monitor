@@ -4,6 +4,7 @@ import "../../resources/components"
 
 Window {
     id: appWindow
+    objectName: "appWindow"
     width: 800
     height: 800
     visible: true
@@ -14,7 +15,8 @@ Window {
     property var loginWindowRef: null
 
     CustomButton {
-        id: btnClose
+        id: appBtnClose
+        objectName: "appBtnClose"
         width: 30
         height: 30
         opacity: 1
@@ -57,5 +59,9 @@ Window {
             loginWindowRef.showWindow();
         }
         appWindow.destroy();
+    }
+
+    Component.onCompleted: {
+        console.log("appBtnClose.x:", appBtnClose.x, "appBtnClose.y:", appBtnClose.y);
     }
 }

@@ -162,16 +162,22 @@ def get_headers(kwargs: dict) -> dict:
     return {**header, **kwargs} 
 
 
-def get_client_secret(username: str) -> str:
+def set_client_secret(username: str) -> None:
     """
-    Retrieves the client secret from a Docker container.
+    Set a client secret for a given username by executing a command in the Docker container.
 
-    :param username: Username for which to retrieve the secret
-    :return: The client secret for the user
+    This function runs a `manage.py` command inside a Docker container to set the client secret
+    for the specified username. The secret is retrieved from the command output.
+
+    Args:
+        username (str): The username for which the client secret is to be set.
+
+    Raises:
+        RuntimeError: If the command execution fails.
     """
     logger.debug(f"Fetching client secret for username: {username}")
     command = [
-        "docker", "exec", "my_apache", "python", "manage.py", "get_client_secret", username
+        "docker", "exec", "my_apache", "python", "manage.py", "set_client_secret", username
     ]
     try:
         result = subprocess.run(
@@ -181,8 +187,8 @@ def get_client_secret(username: str) -> str:
             check=True
         )
         client_secret = result.stdout.strip().split(":")[-1] 
-        logger.info(f"Client secret retrieved successfully for username: {username}")
-        return client_secret
+        logger.info(f"Client secret {client_secret} seted successfully for username: {username}")
+
     except subprocess.CalledProcessError as e:
         logger.error(f"Command failed: {e.stderr}")
         raise RuntimeError(f"Command failed: {e.stderr}")
@@ -290,6 +296,13 @@ def docker_services():
     except Exception as e:
         logger.error(f"Error copying file for user '{username}': {e}")
         assert False, f"Failed copie File to '{username}' : {e}"
+        
+    try:
+        set_client_secret(username)
+    except Exception as e:
+        logger.error(f"Error while setting hasehed secret for '{username}': {e}")
+        assert False, f"Failed to set hashed secret for '{username}': {e}"
+        
   
     yield 
     
@@ -306,41 +319,7 @@ def docker_services():
         assert False, f"Failed to remove user '{username}': {e}"
         
     # Stop and remove the Docker containers
-    subprocess.run(["docker-compose", "down"], check=True)
-    
-
-
-@pytest.fixture(scope="session")
-def secret_provider(docker_services):
-    """
-    Pytest fixture to set up a secret provider for testing.
-    Starts a secret handler process and verifies its health before tests.
-    """
-    logger.info("Setting up SecretProvider")
-    hashed_secret = get_client_secret(username)
-    logger.info(f"Hashed secret retrieved: {hashed_secret}")
-
-    secret_handler = SecretProvider(int(config('SECRET_SERVER_URL_LOCAL').split(":")[2]),hashed_secret)
-    
-    secret_handler.start()
-
-    # Check if SecretProvider is running
-    time.sleep(10) 
-    try:
-        response = requests.get(f'{config('SECRET_SERVER_URL_LOCAL')}/health', cert=(CERT_FILE, KEY_FILE), verify=CA_FILE)
-        assert response.status_code == 200
-        logger.info("SecretProvider is running")
-    except Exception as e:
-        logger.error(f"SecretProvider failed to start: {e}")
-        secret_handler.terminate()
-        pytest.fail("Failed to start SecretProvider")
-
-    yield secret_handler
-
-    logger.info("Tearing down SecretProvider")
-    if secret_handler.is_alive():
-        secret_handler.terminate()
-        
+    subprocess.run(["docker-compose", "down"], check=True)        
         
 @pytest.fixture(scope="function", autouse=True)
 def clear_tokens():

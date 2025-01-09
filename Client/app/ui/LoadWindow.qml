@@ -8,6 +8,7 @@ Item {
 
     CustomButton {
         id: btnClose
+        objectName: "btnClose"
         width: 30
         height: 30
         opacity: 1

@@ -5,10 +5,9 @@ import logging
 logger = logging.getLogger(__name__)
 load_dotenv()
 
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-TEST_PATH = os.getcwd()
-BASE_DIR = os.path.dirname(TEST_PATH)
-
+logger.info(f"BASE_DIR:  {BASE_DIR}")
 
 class Config:
     """
@@ -21,7 +20,7 @@ class Config:
     logging.
     """
 
-    DATABASE_URL = os.getenv("DATABASE_URLY")
+    DATABASE_URL = os.getenv("DATABASE_URL")
     SESSION_EXPIRATION_HOURS = os.getenv("SESSION_EXPIRATION_HOURS")
     TOKEN_EXPIRATION_MINUTES = os.getenv("TOKEN_EXPIRATION_MINUTES")
     REFRESH_EXPIRATION_HOURS = os.getenv("REFRESH_EXPIRATION_HOURS")

@@ -2,6 +2,11 @@ from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtQml import QQmlApplicationEngine
 from PyQt6.QtCore import QtMsgType, qInstallMessageHandler
 from qasync import QEventLoop, run
+import signal
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from app.database import init_db
 from app.viewmodels.session_viewmodel import SessionViewModel
@@ -11,6 +16,7 @@ from app.appStatus.app_state_manager import AppState
 from app.network.Session_client import SessionClient
 from app.signals.signal_connection import SignalConnectionManager
 from app.database.settings_db_manager import SettingsDBManager
+from tests.test_api import TestApi
 
 import sys
 import os
@@ -22,7 +28,7 @@ os.environ["QT_QUICK_BACKEND"] = "software"
 os.environ.setdefault("QT_API", "PyQt6")
 
 # Configure the logging system
-BASE_DIR = os.getcwd()
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__)))
 logs_path = os.path.join(BASE_DIR, "logs","logs.log")
 
 logging.basicConfig(
@@ -59,7 +65,7 @@ def qml_message_handler(mode: QtMsgType, context, message: str) -> None:
     else:
         logger.info(f"QML (other): {message}")
 
-async def main():
+async def main(engine,app,test_mode=False):
     """
     The main entry point of the application.
     
@@ -80,8 +86,6 @@ async def main():
     
     logger.info("QGuiApplication instance created.")
     
-    # Create and configure the QML engine
-    engine = QQmlApplicationEngine()
 
     engine.quit.connect(lambda: logger.info("START QUIT"))
     engine.quit.connect(lambda: sys.exit(asyncio.get_running_loop().stop()))
@@ -117,7 +121,10 @@ async def main():
     
     # Load the main QML file  
     logger.info("start  engine.load('main.qml')") 
-    engine.load('main.qml')
+    qml_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'main.qml'))
+    engine.load(qml_file_path)
+    
+    logger.info("engine loaded") 
     
     signal_manager = SignalConnectionManager(sessionview,appstatus,event_manager,session_client,user_manager)
     signal_manager.connect_signals()
@@ -126,12 +133,22 @@ async def main():
     if not engine.rootObjects():
         logger.error("No root objects were loaded in the QML engine. Exiting application.")
         sys.exit(-1)
+        
+    if test_mode:
+        logger.info("Start Test Api")
+        api = TestApi(engine, user_manager)
+        asyncio.ensure_future(api.start_server())    
+        
+    logger.info("Start to connect close events")
 
     app.aboutToQuit.connect(lambda: logger.info("Application is closing..."))    
     app.aboutToQuit.connect(session_client.close_session)
     app.aboutToQuit.connect(user_manager.close_clear_tokens_and_session)
     app.aboutToQuit.connect(event_manager.stop) 
+    app.aboutToQuit.connect(api.shutdown) 
+        
     app_close_event = asyncio.Event()
+    logger.info("app_close_event created")
     app.aboutToQuit.connect(app_close_event.set)
     
     # Start the Qt application event loop
@@ -139,8 +156,16 @@ async def main():
     await app_close_event.wait()
 
 if __name__ == "__main__":
+    import argparse
+    from distutils.util import strtobool
+    args_parser = argparse.ArgumentParser(description='Run Monitoring Api')
+    args_parser.add_argument('--test', help='run test api',type=lambda x:bool(strtobool(x)))
+    args = args_parser.parse_args()
     
     app = QGuiApplication(sys.argv)
     loop = QEventLoop(app)
+   
     asyncio.set_event_loop(loop)
-    run(main())
+    engine = QQmlApplicationEngine()
+
+    run(main(engine,app,args.test))

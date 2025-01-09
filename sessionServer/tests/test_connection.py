@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.usefixtures("docker_services", "secret_provider")
+@pytest.mark.usefixtures("docker_services")
 class TestSessionServer:
     """Test suite for the Session Server's functionality."""
     
@@ -33,12 +33,6 @@ class TestSessionServer:
         )
         logger.debug(f"Received response: {response.status_code} {response.content}")
         return response
-    
-    def test_secret_provider_functionality(self, secret_provider):
-        """Test if the secret provider is initialized and functional."""
-        logger.debug("Testing secret provider setup.")
-        assert secret_provider is not None, "Secret provider is not initialized!"
-        logger.debug("Secret provider is set up and ready for testing.")
         
     def test_login_http(self):
         """Test login endpoint over HTTP. Ensure access is forbidden."""
@@ -79,7 +73,7 @@ class TestSessionServer:
         logger.info("Testing login with TLS 1.2")
         
         secret_key = TwoFactor.generate_secret_key(constants.email, constants.username)
-        logger.debug(f"clent secret key:  {secret_key}")
+        logger.debug(f"client secret key:  {secret_key}")
         totp = pyotp.TOTP(secret_key)
         verification_code = totp.now()
         header = conftest.get_headers({"X-Verification-Code":verification_code})

@@ -30,6 +30,7 @@ class Command(BaseCommand):
                                                                 email = email,
                                                                 first_name= firstname,
                                                                 last_name = lastname,
+                                                                password = password
                                                                 )
                 if created:
                     logger.debug(f"User '{username}' created successfully.")

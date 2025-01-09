@@ -11,20 +11,25 @@ import logging
 from constants import *
 
 # Path for the log file
-log_file_path = 'secret.log'
+log_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__),"logs","secret.log"))
 
 # Logger setup
 logger = logging.getLogger("test_secret")
 logger.setLevel(logging.DEBUG)
 
-file_handler = logging.FileHandler("secret.log")  
+file_handler = logging.FileHandler(log_file_path)  
 file_handler.setLevel(logging.DEBUG)
+
+console_handler = logging.StreamHandler()  
+console_handler.setLevel(logging.DEBUG)
 
 # Create a formatter and set it for the handler
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 file_handler.setFormatter(formatter)
+console_handler.setFormatter(formatter)
 
 logger.addHandler(file_handler)
+logger.addHandler(console_handler)
 
 def push_log_to_loki(log_message: str, stream_labels: dict) -> None:
     """
@@ -137,10 +142,14 @@ class SecretProvider(multiprocessing.Process):
         """
         logger.debug("Starting SecretProvider HTTP Server ")
         push_log_to_loki("Starting SecretProvider HTTP Server",stream_labels_secret)
+        logger.debug(f"SERVER_FILE: {SERVER_FILE}")
+        logger.debug(f"SERVER_KEY_FILE: {SERVER_KEY_FILE}")
+        logger.debug(f"SERVER_CA_FILE: {SERVER_CA_FILE}")
+        logger.debug("0.0.0.0")
 
         self.http_handler = SecretServer(
-                    ('localhost', self.server_port),
-                    lambda *args, **kwargs: SecretHandler(*args, hashed_secret=self.hashed_secret, **kwargs))
+                    ('0.0.0.0', self.server_port),
+                    lambda *args, **kwargs: SecretHandler(*args,parent_provider=self, **kwargs))
         
         context = MySSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(certfile=SERVER_FILE, keyfile=SERVER_KEY_FILE)
@@ -164,14 +173,21 @@ class SecretProvider(multiprocessing.Process):
         logger.debug("Shutting down SecretProvider HTTP Server")
         self.http_handler.shutdown()
         self.http_handler.server_close()
+        
+    def set_hashed_secret(self, new_hashed_secret):
+        """
+        Update the global hashed_secret.
+        """
+        self.hashed_secret = new_hashed_secret
+        logger.debug(f"Global hashed_secret updated: {self.hashed_secret}")
 
 
 class SecretHandler(http.server.BaseHTTPRequestHandler):
-    def __init__(self, *args, hashed_secret=None, **kwargs):
+    def __init__(self, *args, parent_provider=None, **kwargs):
         """
         HTTP handler for managing secret-related requests.
         """
-        self.hashed_secret = hashed_secret 
+        self.parent_provider = parent_provider
         print("secretprovider success")
         super().__init__(*args, **kwargs)
         
@@ -204,8 +220,15 @@ class SecretHandler(http.server.BaseHTTPRequestHandler):
 
             req_username = data.get('username')
             req_hashed_secret = data.get('hashed_secret')
+            
+            logger.debug(f"self.parent_provider.hashed_secret:{self.parent_provider.hashed_secret}")
+            logger.debug(f"req_hashed_secret:{req_hashed_secret}")
+            logger.debug(f"req_username:{req_username}")
+            logger.debug(f"username:{username}")
+            logger.debug(f"req_username == username:{req_username == username}")
+            logger.debug(f"req_hashed_secret == self.parent_provider.hashed_secret:{req_hashed_secret == self.parent_provider.hashed_secret}")
 
-            if req_username == username and req_hashed_secret == self.hashed_secret:
+            if req_username == username and req_hashed_secret == self.parent_provider.hashed_secret:
                 response = {'secret': client_secret}
                 time.sleep(1)
                 logger.debug("Valid credentials")
@@ -223,6 +246,40 @@ class SecretHandler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_response(404)
             self.end_headers()
+            
+    def do_PUT(self):
+        """
+        Handle PUT requests to set a new hashed_secret.
+        """
+        if self.path == '/set_secret':
+            try:
+                content_length = int(self.headers['Content-Length'])
+                put_data = self.rfile.read(content_length)
+                data = json.loads(put_data.decode('utf-8'))
+
+                new_hashed_secret = data.get('hashed_secret')
+                if not new_hashed_secret:
+                    raise ValueError("Missing 'hashed_secret' in request body.")
+
+                # Update the hashed_secret
+                self.parent_provider.set_hashed_secret(new_hashed_secret)
+                logger.debug(f"Updated hashed_secret: {self.parent_provider.hashed_secret}")
+
+                response = {"message": "hashed_secret updated successfully"}
+                self.send_response(200)
+            except (ValueError, json.JSONDecodeError) as e:
+                logger.error(f"Error processing PUT request: {e}")
+                response = {"error": str(e)}
+                self.send_response(400)
+
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode('utf-8'))
+        else:
+            self.send_response(404)
+            self.end_headers()
+            
+    
             
 if __name__ == '__main__':
     logger.debug('SecretProvider__main__') 
