@@ -9,6 +9,7 @@ Button {
     property color colorMouseOver: "#55AAFF"
     property color colorPressed: "#3F7EBD"
     property bool borderButton: false
+    property int radiusBorder: 10
 
     QtObject{
         id: internal
@@ -33,7 +34,7 @@ Button {
 
     background: Rectangle{
         color: internal.dynamicColor
-        radius: 10
+        radius: radiusBorder
         border.color: "#bfbdbb"
         border.width: borderButton ? 2 : 0
     }

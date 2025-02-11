@@ -22,6 +22,7 @@ class TokenDManager(BaseManager, metaclass=SingletonMeta):
     """
     def __init__(self, session_factory=None):
         """Initialize the TokenManager with a database session and token mappings."""
+        super().__init__() 
         self.session_factory = session_factory or AsyncSessionLocal
         self.token_classes = {
             "access": TokenData,
@@ -224,11 +225,17 @@ class TokenDManager(BaseManager, metaclass=SingletonMeta):
                             except Exception: 
                                 logger.error(f"Failed to delete session with ")
                         
-                        token.token = self.decrypt(token.token)
+                        decrypted_token = TokenData(
+                            id=token.id,
+                            token=self.decrypt(token.token), 
+                            expires_at=token.expires_at,
+                        )
                         
-                logger.info(f"{token_type.capitalize()} token retrieved successfully.")
-                
-                return token
+                        logger.info(f"{token_type.capitalize()} token retrieved successfully.")
+                        
+                        return decrypted_token
+                    else:
+                        return None
             except SQLAlchemyError as e:
                 logger.error(f"Database error while retrieving {token_type} token: {e}")
                 raise
@@ -269,7 +276,6 @@ class TokenDManager(BaseManager, metaclass=SingletonMeta):
         async with self.session_factory() as session:
             logger.info("start  cleaar tokens")
             logger.info(f"Session is active: {session.is_active}")
-            logger.info(f"Database connection is open: {session.connection() is not None}")
             try:
                 async with session.begin():
                     await self._clear_token(token_type,session)
@@ -290,13 +296,14 @@ class TokenDManager(BaseManager, metaclass=SingletonMeta):
             try:
                 logger.info("start select tokens")
                 logger.info(f"Session is active: {session.is_active}")
-                logger.info(f"Database connection is open: {session.connection() is not None}")
                 
                 access_tokens_result = await session.execute(select(TokenData))
                 refresh_tokens_result = await session.execute(select(RefreshTokenData))
 
                 access_tokens = access_tokens_result.scalars().all()
                 refresh_tokens = refresh_tokens_result.scalars().all()
+                
+                logger.info(f"tokens: {access_tokens}")
                 
                 for token in access_tokens:
                     logger.info("Access token exist")

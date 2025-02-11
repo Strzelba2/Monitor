@@ -10,12 +10,14 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from app.database import init_db
 from app.viewmodels.session_viewmodel import SessionViewModel
-from app.models.event_manager import CentralQueueManager
-from app.models.user_manager import UserManager
+from app.managers.event_manager import CentralQueueManager
+from app.managers.user_manager import UserManager
+from app.managers.stream_manager import StreamManager
 from app.appStatus.app_state_manager import AppState
-from app.network.Session_client import SessionClient
+from app.network.session_client import SessionClient
 from app.signals.signal_connection import SignalConnectionManager
 from app.database.settings_db_manager import SettingsDBManager
+from config.config import Config
 from tests.test_api import TestApi
 
 import sys
@@ -111,6 +113,7 @@ async def main(engine,app,test_mode=False):
     sessionview = SessionViewModel()
     await sessionview.initialize_managers(SettingsDBManager)
     engine.rootContext().setContextProperty("sessionview", sessionview)
+    engine.addImageProvider("stream", sessionview.stream_display)
     logger.debug("SessionViewModel set in QML context.")
     
     # Initialize AppState
@@ -119,6 +122,9 @@ async def main(engine,app,test_mode=False):
     engine.rootContext().setContextProperty("appstatus", appstatus)
     logger.debug("AppState set in QML context.")
     
+    # Initialize StreamManager
+    stream_manager = StreamManager()
+    
     # Load the main QML file  
     logger.info("start  engine.load('main.qml')") 
     qml_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'main.qml'))
@@ -126,7 +132,9 @@ async def main(engine,app,test_mode=False):
     
     logger.info("engine loaded") 
     
-    signal_manager = SignalConnectionManager(sessionview,appstatus,event_manager,session_client,user_manager)
+    signal_manager = SignalConnectionManager(
+        sessionview,appstatus,event_manager,session_client,user_manager,stream_manager
+    )
     signal_manager.connect_signals()
 
     # Check if the root QML objects are loaded
@@ -143,6 +151,7 @@ async def main(engine,app,test_mode=False):
 
     app.aboutToQuit.connect(lambda: logger.info("Application is closing..."))    
     app.aboutToQuit.connect(session_client.close_session)
+    app.aboutToQuit.connect(stream_manager.close_server)
     app.aboutToQuit.connect(user_manager.close_clear_tokens_and_session)
     app.aboutToQuit.connect(event_manager.stop) 
     app.aboutToQuit.connect(api.shutdown) 
@@ -161,6 +170,9 @@ if __name__ == "__main__":
     args_parser = argparse.ArgumentParser(description='Run Monitoring Api')
     args_parser.add_argument('--test', help='run test api',type=lambda x:bool(strtobool(x)))
     args = args_parser.parse_args()
+    
+    if args.test:
+        Config.enable_test_mode()
     
     app = QGuiApplication(sys.argv)
     loop = QEventLoop(app)

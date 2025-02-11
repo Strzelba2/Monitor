@@ -1,10 +1,12 @@
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, call
 import asyncio
+from datetime import datetime
 from PyQt6.QtCore import QObject,pyqtSignal
-from app.models.user_manager import UserManager
+from app.managers.user_manager import UserManager
 from aiohttp import ClientSSLError
 from aiohttp.client_reqrep import ConnectionKey
+from config.config import Config
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,9 +15,10 @@ class EventManager(QObject):
     handle_login_event = pyqtSignal(dict)
     set_secret_key = pyqtSignal(str, str)
     handle_refresh_token_event = pyqtSignal(dict)
-    logout_get_token_event = pyqtSignal()
+    get_token_event = pyqtSignal(str, dict)
     handle_logout_event = pyqtSignal(dict)
     handle_exception_event = pyqtSignal(Exception,str,dict,str)
+    handle_session_event = pyqtSignal(dict)
     
     def __del__(self):
         print("EventManager has been deleted")
@@ -25,7 +28,8 @@ class TestUserManager(unittest.IsolatedAsyncioTestCase):
         """Set up the TestUserManager test case by initializing mock objects and connecting event signals."""
         logger.info("Setting up TestUserManager test case.")
         self.user_manager = UserManager()
-        self.user_manager._token_manager = MagicMock()
+        self.user_manager._token_manager = AsyncMock()
+        self.user_manager._sesion_manager = AsyncMock()
         self.user_manager.addEvent = MagicMock()
         self.user_manager._error_manager = MagicMock()
         
@@ -42,8 +46,9 @@ class TestUserManager(unittest.IsolatedAsyncioTestCase):
         self.event_manager.handle_login_event.connect(self.user_manager.login)
         self.event_manager.set_secret_key.connect(self.user_manager.generate_secret_key)
         self.event_manager.handle_refresh_token_event.connect(self.user_manager.refresh_token)
-        self.event_manager.logout_get_token_event.connect(self.user_manager.logout_get_token)
+        self.event_manager.get_token_event.connect(self.user_manager.get_token)
         self.event_manager.handle_logout_event.connect(self.user_manager.logout)
+        self.event_manager.handle_session_event.connect(self.user_manager.session)
         self.event_manager.handle_exception_event.connect(self.user_manager.cqm_process_exception)
         
     async def test_notify_token_refreshed_tokens_exists(self):
@@ -78,6 +83,7 @@ class TestUserManager(unittest.IsolatedAsyncioTestCase):
     async def test_generate_secret_key_successful(self):
         """Test that generate_secret_key emits the correct secret key signal successfully."""
         logger.info("Started: test_generate_secret_key_successful")
+        self.user_manager._token_manager.generate_secret_key = MagicMock()
         self.event_manager.set_secret_key.emit('123456', 'password123')
         
         self.user_manager._token_manager.generate_secret_key.assert_called_once_with('123456', 'password123')
@@ -109,14 +115,17 @@ class TestUserManager(unittest.IsolatedAsyncioTestCase):
     async def test_login_successful(self):
         """Test successful login emits the correct signal and saves the token."""
         logger.info("Started: test_login_successful")
+        
+        expect_refresh_timer = self.login_response_data["expires_in"] - int(Config.REFRESH_TOKEN_TIME_DELTA)
         self.user_manager._token_manager.save_token = AsyncMock()
+        self.user_manager._token_manager.start_refresh_timer = AsyncMock()
         
         self.login_response_data["status"] = 200
         self.event_manager.handle_login_event.emit(self.login_response_data)
       
         await asyncio.sleep(0.5)
         self.user_manager._token_manager.save_token.assert_called_once_with(self.login_response_data)
-        self.user_manager._token_manager.start_refresh_timer.assert_called_once_with(27040)
+        self.user_manager._token_manager.start_refresh_timer.assert_called_once_with(expect_refresh_timer)
         
         self.user_manager.addEvent.emit.assert_called_once_with(
             0, "login_success", {}, self.user_manager.__class__.__name__
@@ -129,6 +138,7 @@ class TestUserManager(unittest.IsolatedAsyncioTestCase):
         logger.info("Started: test_login_keyError")
         
         self.user_manager._token_manager.save_token = AsyncMock(side_effect=KeyError("Invalid token data format."))
+        self.user_manager._token_manager.clear_secret_key = MagicMock()
         
         self.login_response_data["status"] = 200
         self.event_manager.handle_login_event.emit(self.login_response_data)
@@ -147,6 +157,7 @@ class TestUserManager(unittest.IsolatedAsyncioTestCase):
         """test login failed when it receives login failure signal"""
         logger.info("Started: test_login_failed")
         self.user_manager._token_manager.save_token = AsyncMock()
+        self.user_manager._token_manager.clear_secret_key = MagicMock()
         
         data = {"status":401, "error":"Unauthorized connection" }
         self.event_manager.handle_login_event.emit(data)
@@ -162,6 +173,7 @@ class TestUserManager(unittest.IsolatedAsyncioTestCase):
         """Test login processing exception when it gets it in even"""
         logger.info("Started: test_login_exception")
         self.user_manager._token_manager.save_token = AsyncMock()
+        self.user_manager._token_manager.clear_secret_key = MagicMock()
         
         connection_key = ConnectionKey(
                         host="example.com", port=443, is_ssl=True, ssl=None, proxy=None, proxy_auth=None,
@@ -186,15 +198,17 @@ class TestUserManager(unittest.IsolatedAsyncioTestCase):
     async def test_refresh_token_successful(self):
         """test refresh token after receiving a signal token will be saved and start a timer"""
         logger.info("Started: test_refresh_token_successful")
+        expect_refresh_timer = self.login_response_data["expires_in"] - int(Config.REFRESH_TOKEN_TIME_DELTA)
         self.user_manager._token_manager.clear_tokens = AsyncMock()
         self.user_manager._token_manager.save_token = AsyncMock()
+        self.user_manager._token_manager.start_refresh_timer = MagicMock()
         
         self.login_response_data["status"] = 200
         self.event_manager.handle_refresh_token_event.emit(self.login_response_data)
       
         await asyncio.sleep(0.2)
         self.user_manager._token_manager.save_token.assert_called_once_with(self.login_response_data)
-        self.user_manager._token_manager.start_refresh_timer.assert_called_once_with(27040)
+        self.user_manager._token_manager.start_refresh_timer.assert_called_once_with(expect_refresh_timer)
         self.user_manager._error_manager.reset_exception.assert_called_once()
         
         logger.info("test passed: test_refresh_token_successful")
@@ -219,6 +233,7 @@ class TestUserManager(unittest.IsolatedAsyncioTestCase):
         
         self.user_manager._token_manager.clear_tokens = AsyncMock()
         self.user_manager._token_manager.save_token = AsyncMock()
+        self.user_manager._token_manager.clear_secret_key = MagicMock()
         
         data = {"status":401, "error":"Unauthorized connection" }
         self.event_manager.handle_refresh_token_event.emit(data)
@@ -249,30 +264,38 @@ class TestUserManager(unittest.IsolatedAsyncioTestCase):
 
         logger.info("Test passed: test_refresh_token_failed_exception")
         
-    async def test_logout_get_token(self):
-        """Test signal logout_get_token_event whether it will send the right event"""
-        logger.info("Started: test_logout_get_token")
+    async def test_get_token(self):
+        """Test signal get_token_event whether it will send the right event"""
+        logger.info("Started: test_get_token")
         self.user_manager._token_manager.get_token_access_token =  AsyncMock(return_value=MagicMock(token="mock_token"))
  
-        self.event_manager.logout_get_token_event.emit()
+        data = {
+            "event":"logout",
+            "data":{}
+        }
+        self.event_manager.get_token_event.emit(data["event"],data["data"])
         
         await asyncio.sleep(0.2)
         
         self.user_manager.addEvent.emit.assert_called_once_with(0,"send_logout",{"access_token":"mock_token"},self.user_manager.__class__.__name__)
-        logger.info("Test passed: test_logout_get_token")
+        logger.info("Test passed: test_get_token")
 
-    async def test_logout_get_token_error(self):
+    async def test_get_token_error(self):
         """Test ValueError handler during get logout event """
-        logger.info("Started: test_logout_get_token_error")
+        logger.info("Started: test_get_token_error")
         self.user_manager._token_manager.get_token_access_token =  AsyncMock(side_effect=ValueError("Invalid token type requested."))
  
-        self.event_manager.logout_get_token_event.emit()
+        data = {
+            "event":"logout",
+            "data":{}
+        }
+        self.event_manager.get_token_event.emit(data["event"],data["data"])
         
         await asyncio.sleep(0.2)
         
         self.user_manager._error_manager.emit_critical_error.assert_called_once_with('Applications have faced a critical issue:Invalid token type requested.,Please contact the administrator')
         
-        logger.info("Test passed: test_logout_get_token_error")
+        logger.info("Test passed: test_get_token_error")
         
 
     async def test_logout_successful(self):
@@ -281,6 +304,7 @@ class TestUserManager(unittest.IsolatedAsyncioTestCase):
         
         self.user_manager._token_manager.clear_tokens = AsyncMock()
         self.user_manager._token_manager.save_token = AsyncMock()
+        self.user_manager._token_manager.clear_secret_key = MagicMock()
         
         data = {"status" : 200}
         self.event_manager.handle_logout_event.emit(data)
@@ -326,3 +350,54 @@ class TestUserManager(unittest.IsolatedAsyncioTestCase):
         
         self.user_manager._error_manager.emit_critical_error.assert_called_once_with('Applications have faced a critical issue:Unauthorized connection,Please contact the administrator')
         logger.info("Test passed: test_logout_failed")
+        
+    async def test_session_successful(self):
+        """Test successful session emits the correct signal and saves the session."""
+        logger.info("Started: test_session_successful")
+        
+        kwargs = {
+            "status": 200,
+            "sessionId": "test_session_id",
+            "expires": (datetime.now()).isoformat()
+        }
+        
+        expires_dt = datetime.fromisoformat(kwargs['expires'])
+        expires_timestamp = int(expires_dt.timestamp())
+        
+        refresh_interval = expires_timestamp - int(Config.REFRESH_TOKEN_TIME_DELTA) 
+
+        self.user_manager._sesion_manager.save_session = AsyncMock()
+        self.user_manager._sesion_manager.start_refresh_timer = MagicMock()
+
+        self.event_manager.handle_session_event.emit(kwargs)
+      
+        await asyncio.sleep(0.5)
+        self.user_manager._sesion_manager.save_session.assert_called_once_with(kwargs)
+        self.user_manager._sesion_manager.start_refresh_timer.assert_called_once_with(refresh_interval)
+        
+        self.user_manager.addEvent.emit.assert_called_once_with(
+            2,"session_update",{"available": True}, self.user_manager.__class__.__name__
+        )
+        
+        logger.info("Test passed: test_session_successful")
+        
+    async def test_session_failed(self):
+        """Test failed session emits the correct signal and saves the session."""
+        logger.info("Started: test_session_failed")
+        
+        kwargs = {
+            "status": 401,
+            "error": "test_error",
+        }
+
+        self.event_manager.handle_session_event.emit(kwargs)
+      
+        await asyncio.sleep(0.5)
+
+        self.user_manager.addEvent.emit.assert_has_calls([
+            call(3, "close_stream_session", {}, self.user_manager.__class__.__name__),
+            call(2, "session_update", {"available": False}, self.user_manager.__class__.__name__)
+        ], any_order=False)
+        
+        self.assertIsNone(self.user_manager._sesion_manager.server_name)
+        logger.info("Test passed: test_session_failed")

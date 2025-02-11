@@ -4,9 +4,10 @@ class SessionState(Enum):
     """
     Enumeration representing the different states of a user session.
     """
-    SESSION_EXPIRED = "session_expired"
+    SESSION_SHOW_SERVERS = "show_servers"
     SESSION_AVAILABLE = "session_available"
-    RENEWING_SESSION = "renewing_session"
+    IN_PROGRES = "in_progres"
+    CONNECTED = "connected"
     SESSION_UNAVAIABLE = "session_unavailable"
     
 class LoginState(Enum):

@@ -1,6 +1,7 @@
 import hashlib
 import base64
 from cryptography.fernet import Fernet
+from .encypt_data import SharedKeyCipher
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,11 +24,18 @@ class BaseManager:
     """
     def __init__(self):
         """
-        Initialize the BaseManager with no secret key or cipher.
+        Initializes the BaseManager instance.
+
+        This constructor sets up encryption management using `SharedKeyCipher` but 
+        does not initialize it with a secret key or cipher, leaving it in an unconfigured state.
         """
-        self.key = None
-        self.cipher = None
-        logger.info("BaseManager initialized without a key or cipher.")
+        self.encryt_data = SharedKeyCipher()
+
+        logger.info("BaseManager instance created. Encryption handler initialized but not configured with a secret key.")
+        
+    @property
+    def cipher(self):
+        return self.encryt_data.cipher
 
     def generate_secret_key(self, code_2fa: str, password: str) -> None:
         """
@@ -48,14 +56,10 @@ class BaseManager:
 
         # Generate a SHA-256 hash of the key material
         sha256_hash = hashlib.sha256(key_material).digest()
-
-        # Ensure it's 32 bytes and encode it in base64 for Fernet
-        self.key = base64.urlsafe_b64encode(sha256_hash[:32])
-        logger.info("Secret key generated and encoded.")
+        logger.debug("SHA-256 hash generated for key material.")
         
-        # Initialize Fernet cipher with the key
-        self.cipher = Fernet(self.key)
-        logger.info("Fernet cipher initialized.")
+        self.encryt_data.key = base64.urlsafe_b64encode(sha256_hash[:32])
+        logger.info("Encryption key successfully generated and stored in Fernet cipher.")
 
     def encrypt(self, plaintext: str) -> str:
         """

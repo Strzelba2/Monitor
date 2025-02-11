@@ -13,6 +13,7 @@ import subprocess
 import base64
 import ssl
 import logging
+import json
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -74,37 +75,6 @@ class CustomTLSAdapter(HTTPAdapter):
 
         return response
     
-def generate_hmac(session_id: str, ip_address: str, method: str, timestamp: str, username: str, body: str, secret_key: str) -> str:
-    """
-    Generates an HMAC signature.
-
-    :param session_id: Session ID
-    :param ip_address: Server IP address
-    :param method: HTTP method (e.g., 'GET', 'POST')
-    :param timestamp: Current timestamp
-    :param username: Username
-    :param body: Request body
-    :param secret_key: Secret key for HMAC
-    :return: Base64-encoded HMAC signature
-    """
-    
-    logger.debug(f"Generating HMAC for session: {session_id}, username: {username}")
-    # Encode the body using Base64
-    encoded_body = base64.b64encode(body.encode()).decode()
-
-    # Create the message by concatenating the components
-    message = f"{session_id}{ip_address}{method}{timestamp}{username}{encoded_body}"
-
-    # Generate the HMAC signature
-    hmac_signature = hmac.new(secret_key.encode(), message.encode(), hashlib.sha256).hexdigest()
-
-    # Encode the HMAC signature using Base64
-    encoded_hmac_signature = base64.b64encode(hmac_signature.encode()).decode()
-
-    logger.info("HMAC signature generated successfully.")
-    return encoded_hmac_signature
-
-
 def set_env() -> None:
     """
     Updates environment variables for the test setup.

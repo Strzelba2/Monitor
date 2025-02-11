@@ -9,9 +9,13 @@ logger = logging.getLogger(__name__)
 class TestAppState(unittest.TestCase):
     def setUp(self):
         """Set up test case environment."""
+        AppState._instance = None
         self.app_state = AppState()
-        self.app_state.showAppStateChanged = MagicMock()  # Mock the signal
-
+        self.app_state.showAppStateChanged = MagicMock() 
+        
+    def TearDown(self):
+        AppState._instance = None
+        super().tearDown()
 
     def test_initial_state(self):
         """Test that the initial state is set correctly."""

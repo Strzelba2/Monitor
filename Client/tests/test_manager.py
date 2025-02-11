@@ -252,9 +252,13 @@ class TestSessionViewModel(unittest.IsolatedAsyncioTestCase):
         """Test that verify if logout emit event signal"""
         logger.info("Test Started test_logout")
         self.session_view_model.logout()
+        data = {
+            "event":"logout",
+            "data":{}
+        }
         
         self.session_view_model.addEvent.emit.assert_called_once_with(
-            0, "logout", {}, self.session_view_model.__class__.__name__
+            0, "request_with_token", data, self.session_view_model.__class__.__name__
         )
         logger.info("Test Passed test_logout")
         

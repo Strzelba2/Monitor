@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import asyncio
 from PyQt6.QtCore import QObject,pyqtSignal
 
-from app.models.event_manager import CentralQueueManager
+from app.managers.event_manager import CentralQueueManager
 
 import logging
 
@@ -24,6 +24,8 @@ class TestCentralQueueManager(unittest.IsolatedAsyncioTestCase):
         self.manager.handle_exception_event = MagicMock()
         self.manager.send_login_event = MagicMock()
         self.manager.send_refresh_token_event = MagicMock()
+        self.manager.close_stream_session = MagicMock()
+        self.manager.session_update_event = MagicMock()
         
         self.session_view.addEvent.connect(self.manager.add_task)
   
@@ -189,6 +191,26 @@ class TestCentralQueueManager(unittest.IsolatedAsyncioTestCase):
         self.manager.send_refresh_token_event.emit.assert_not_called()
         
         logger.info("Test Passed test_emit_event_clear_tasks")
+        
+    async def test_multiple_events_close_and_update(self):
+        """Test emitting events with close and update tasts function"""
+
+        logger.info("Test Started test_multiple_events_close_and_update")
+
+        task = asyncio.create_task(self.manager.start())
+        
+        async def emit_events():
+            self.session_view.addEvent.emit(0, "close_stream_session", {}, type(self).__name__)
+            self.session_view.addEvent.emit(0, "session_update", {"available": False}, type(self).__name__)
+
+        await asyncio.ensure_future(emit_events())
+        
+        await asyncio.sleep(2)
+        
+        self.manager.close_stream_session.emit.assert_called_once()
+        self.manager.session_update_event.emit.assert_called_once()
+        
+    
 
 
             

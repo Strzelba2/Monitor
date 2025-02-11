@@ -1,6 +1,8 @@
 from app.signals.signal_menager import SignalManager
 from app.exceptions.database_exc import SettingsDBManagerError,CriticalDatabaseError
-from app.appStatus.app_state import LoginState
+from app.appStatus.app_state_manager import LoginState, SessionState , AppState
+from app.models.server_model import ServersModel
+from app.models.stream_display import StreamDisplay
 from app.validators.validators import LoginValidator
 from app.base.base import ExceptionHandlerMixin
 from PyQt6.QtCore import QObject, pyqtSlot, pyqtProperty
@@ -24,6 +26,8 @@ class SessionViewModel(ExceptionHandlerMixin , SignalManager):
         """
         super().__init__(parent)
         self.settings = None
+        self._server_model = ServersModel()
+        self._stream_display = StreamDisplay()
         self.__username = None
         self.__password = None
         
@@ -74,6 +78,13 @@ class SessionViewModel(ExceptionHandlerMixin , SignalManager):
         """
         logger.debug("Accessing error_manager property.")
         return self._error_manager
+    
+    @pyqtProperty(StreamDisplay, constant=True)
+    def stream_display(self) -> StreamDisplay:
+        """
+        Returns the stream display instance.
+        """
+        return self._stream_display
         
     @pyqtProperty(bool, notify=SignalManager.switchStateChanged)
     def switch_state(self) -> bool:
@@ -103,6 +114,13 @@ class SessionViewModel(ExceptionHandlerMixin , SignalManager):
         username = self.settings.username
         logger.debug(f"Retrieved username: {username}")
         return username
+    
+    @pyqtProperty(ServersModel, constant=True)
+    def servers(self) -> ServersModel:
+        """
+        Returns the servers model instance.
+        """
+        return self._server_model
 
     @asyncSlot(bool)
     @asyncSlot(bool, str)
@@ -269,14 +287,18 @@ class SessionViewModel(ExceptionHandlerMixin , SignalManager):
         logger.info("Login successful.")
         self._error_manager.reset_exception()
         self.appStateChanged.emit(LoginState.LOGGED_IN)
-    
+
     @pyqtSlot()
     def logout(self) -> None:
         """
         Logs out the current user and emits a logout event.
         """
         logger.debug("Logging out.")
-        self.addEvent.emit(0,"logout",{},type(self).__name__)
+        data = {
+            "event":"logout",
+            "data":{}
+        }
+        self.addEvent.emit(0,"request_with_token",data,type(self).__name__)
     
     @pyqtSlot()    
     def logout_success(self) -> None:
@@ -284,8 +306,104 @@ class SessionViewModel(ExceptionHandlerMixin , SignalManager):
         Handles successful logout.
         """
         logger.info("Logout successful.")
+        self.addEvent.emit(0,"close_stream_session",{},type(self).__name__)
+        self.appSessionStateChanged.emit(SessionState.SESSION_UNAVAIABLE)
         self._error_manager.reset_exception()
         self.logoutSuccess.emit()
+        
+    @pyqtSlot(str)
+    def get_servers_available(self, search:str= "") -> None:
+        """
+        Emits an event to request the list of available servers.
+        
+        Args:
+            search (str): The search query for filtering servers.
+        """
+        logger.debug("Get servers available.")
+           
+        data = {
+            "event":"servers",
+            "data":{"search":search}
+        }
+        self.addEvent.emit(0,"request_with_token",data,type(self).__name__)
+
+        
+    @pyqtSlot(str)
+    def generate_session(self, server_name:str) -> None:
+        """
+        Emits an event to generate a session for the given server.
+        
+        Args:
+            server_name (str): The name of the server to create a session for.
+        """
+        logger.info("Generate session.")
+        data = {
+            "event":"generate_session",
+            "data":{"server_name":server_name}
+        }
+        
+        self.addEvent.emit(0,"request_with_token",data,type(self).__name__)
+        
+    @pyqtSlot(dict) 
+    def servers_available(self, kwargs: dict) -> None:
+        """
+        Handles the response of available servers.
+        
+        Args:
+            kwargs (dict): The response data containing server availability status and list.
+        """
+        logger.error(f"Servers available response: {kwargs}")
+        if kwargs["status"] == 200:
+            self._server_model.load_servers(kwargs["data"])
+            self.appSessionStateChanged.emit(SessionState.SESSION_SHOW_SERVERS)
+            
+    @pyqtSlot(bool)   
+    def session_update(self, session_available: bool) -> None:
+        """
+        Updates the application session state based on availability.
+        
+        Args:
+            session_available (bool): True if the session is available, False otherwise.
+        """
+        logger.info("Update session")
+        if session_available:
+            logger.info("Session available.")
+            self.appSessionStateChanged.emit(SessionState.SESSION_AVAILABLE)
+        else:
+            logger.info("Session unavailable.")
+            self.appSessionStateChanged.emit(SessionState.SESSION_UNAVAIABLE)
+            self._error_manager.emit_error("The session is not available please press Servers to subcribe new one")
+            
+    @pyqtSlot(int, int)       
+    def connect_with_server(self, width: int, height: int) -> None:
+        """
+        Connects to the server with the given video stream dimensions.
+        
+        Args:
+            width (int): The width of the video stream.
+            height (int): The height of the video stream.
+        """
+        logger.info(f"connect_with_server. with width: {width} and height:{height}")
+        data = {
+            "event":"stream_view",
+            "data":{"method":"GET",
+                    "path":"/video" }
+        }
+        self.updateImageSize.emit(width,height)
+        self.addEvent.emit(0,"request_with_token",data,type(self).__name__)
+     
+    @pyqtSlot()    
+    def server_logout(self) -> None:
+        """
+        Logs out from the server and emits the appropriate event.
+        """
+        logger.info("Logging out from server.")
+        
+        data = {
+            "event":"logout_session",
+            "data":{}
+        }
+        self.addEvent.emit(2,"request_with_token",data,type(self).__name__) 
 
 
         

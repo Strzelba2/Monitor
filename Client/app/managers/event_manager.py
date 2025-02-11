@@ -118,10 +118,19 @@ class CentralQueueManager(QObject, SignalManager):
             "login_success": lambda: self.login_success_event.emit(),
             "refresh_token": lambda: self.send_refresh_token_event.emit(payload),
             "handle_refresh_token": lambda: self.handle_refresh_token_event.emit(payload),
-            "logout": lambda: self.logout_get_token_event.emit(),
+            "request_with_token": lambda: self.get_token_event.emit(payload["event"],payload["data"]),
             "send_logout": lambda: self.send_logout_event.emit(payload["access_token"]),
             "handle_logout": lambda: (self.handle_logout_event.emit(payload)),
             "logout_success": lambda:self.logout_success_event.emit(),
+            "send_servers": lambda: self.send_servers_event.emit(payload["access_token"],payload["search"]),
+            "send_generate_session": lambda: self.send_generate_session_event.emit(payload["access_token"],payload["server_name"]),
+            "send_update_session": lambda: self.send_update_session_event.emit(payload),
+            "handle_servers": lambda: self.handle_servers_event.emit(payload),
+            "handle_session": lambda: self.handle_session_event.emit(payload),
+            "session_update":lambda: self.session_update_event.emit(payload["available"]),
+            "send_get_hmac": lambda: self.send_get_hmac.emit(payload),
+            "handle_stream":lambda: self.send_request_stream.emit(payload),
+            "close_stream_session":lambda: self.close_stream_session.emit(),
         }
         
         try:

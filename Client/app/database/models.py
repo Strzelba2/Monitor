@@ -82,20 +82,17 @@ class SessionData(Base):
 
     id = Column(Integer, primary_key=True)
     session_id = Column(String, unique=True, nullable=False)
-    created_at = Column(AwareDateTime, nullable=False)
     expires_at = Column(AwareDateTime, nullable=False)
     
-    def __init__(self, session_id: str, created_at: datetime = None, expires_at: datetime = None):
+    def __init__(self, session_id: str, expires_at: datetime = None):
         """
         Initialize a new session.
 
         Args:
             session_id (str): Unique identifier for the session.
-            created_at (datetime, optional): Creation timestamp. Defaults to now in UTC.
             expires_at (datetime, optional): Expiry timestamp. Defaults to 2 hours from now in UTC.
         """
         self.session_id = session_id
-        self.created_at = created_at or datetime.now(timezone.utc)
         self.expires_at = expires_at or (datetime.now(timezone.utc) + timedelta(hours=2))
         logger.info("New session created")
     
@@ -103,8 +100,7 @@ class SessionData(Base):
         """
         Return a string representation of the session data.
         """
-        return (f"<SessionData(id={self.id}, session_id={self.session_id}, created_at={self.created_at}, "
-                f"expires_at={self.expires_at})>")
+        return (f"<SessionData(id={self.id}, session_id={self.session_id},expires_at={self.expires_at})>")
         
         
 class TokenBase(Base):

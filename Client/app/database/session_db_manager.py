@@ -23,16 +23,16 @@ class SessionDBManager(BaseManager, metaclass=SingletonMeta):
         """
         Initializes the SessionManager with a database session.
         """
-        # super().__init__()
+        super().__init__()
         self.session_factory = session_factory or AsyncSessionLocal
         logger.info("SessionManager initialized with a database session.")
         
-    def validate_session(self, created: datetime, expired: datetime) -> bool:
+    def validate_session(self, sessionid: str, expired: datetime) -> bool:
         """
         Validates a session's creation and expiration timestamps.
 
         Args:
-            created (datetime): The session creation timestamp.
+            sessionId (str): The session id.
             expired (datetime): The session expiration timestamp.
 
         Returns:
@@ -45,31 +45,26 @@ class SessionDBManager(BaseManager, metaclass=SingletonMeta):
         max_expiration_time = now + timedelta(hours=int(Config.SESSION_EXPIRATION_HOURS))
         delta = timedelta(minutes=2)
         
-        if created.tzinfo is None or created.tzinfo.utcoffset(created) is None:
-            logger.error(f"The 'created' timestamp must be timezone-aware.")
-            raise ValueError("The 'created' timestamp must be timezone-aware.")
+        if sessionid is None :
+            logger.error("The 'session id' can not be empty")
+            raise ValueError("The 'session id' can not be empty")
         
         if expired.tzinfo is None or expired.tzinfo.utcoffset(expired) is None:
             logger.error(f"The 'expired' timestamp must be timezone-aware.")
             raise ValueError("The 'expired' timestamp must be timezone-aware.")
         
-        if  created >= now + delta:
-            logger.error(f"Session creation timestamp cannot be in the future.")
-            raise ValueError("Session creation timestamp cannot be in the future.")  
-        
-        if expired >= created + timedelta(hours=int(Config.SESSION_EXPIRATION_HOURS)) + delta and expired >= max_expiration_time + delta:
+        if expired <= now - delta or expired >= max_expiration_time + delta:
             logger.error(f"Session expiration timestamp is outside the allowable range.")
             raise ValueError("Session expiration timestamp is outside the allowable range.") 
         
         return True
         
-    async def __create_session(self, session_id: str, created: datetime, expired: datetime, session: AsyncSession) -> None:
+    async def __create_session(self, session_id: str, expired: datetime, session: AsyncSession) -> None:
         """
         Creates a new session in the database.
 
         Args:
             session_id (str): The unique identifier for the session.
-            created (datetime): The session creation timestamp.
             expired (datetime): The session expiration timestamp.
             session(AsyncSession): Aysync local Session.
 
@@ -81,7 +76,6 @@ class SessionDBManager(BaseManager, metaclass=SingletonMeta):
 
         session_data = SessionData(
             session_id=self.encrypt(session_id),
-            created_at=created,
             expires_at=expired)
         try:
             session.add(session_data)
@@ -100,23 +94,23 @@ class SessionDBManager(BaseManager, metaclass=SingletonMeta):
             logger.exception(f"Unknown error while creating session: {e}")
             raise
         
-    async def update_session(self, session_id: str, created: datetime, expired: datetime) -> None:
+    async def update_session(self, session_id: str, expired: datetime) -> None:
         """
         Updates an existing session or creates a new one if it doesn't exist.
 
         Args:
             session_id (str): The unique identifier for the session.
-            created (datetime): The session creation timestamp.
             expired (datetime): The session expiration timestamp.
 
         Raises:
             SQLAlchemyError: For any database-related issues.
         """
-        logger.info(f"Updating session with ID: {session_id},{created},{expired}")
+        logger.info(f"Updating session with ID: ..... , Expiration: {expired}")
+        
         async with self.session_factory() as session:
             try:
                 async with session.begin():
-                    self.validate_session(created, expired)
+                    self.validate_session(session_id, expired)
                     current_session = await self._get_session(session)
                     if current_session:
                         logger.info("session exist...")
@@ -125,12 +119,11 @@ class SessionDBManager(BaseManager, metaclass=SingletonMeta):
                             return
                         logger.debug(f"Updating session ID ....")
                         current_session.session_id = self.encrypt(session_id)
-                        current_session.created_at = created
                         current_session.expires_at = expired
-                        logger.debug(f"Session ID updated to ....")
+                        logger.debug("Session ID updated successfully.")
                     else:
                         logger.debug(f"No existing session found. Creating a new session with ID.")
-                        await self.__create_session(session_id,created, expired, session)
+                        await self.__create_session(session_id, expired, session)
 
             except SQLAlchemyError as e:
                 logger.error(f"Database error while updating session with ID: {e}")
@@ -176,23 +169,27 @@ class SessionDBManager(BaseManager, metaclass=SingletonMeta):
         async with self.session_factory() as session:
             async with session.begin():
                 try:
-                    curremt_session = await self._get_session(session)
-                    if curremt_session:
+                    current_session = await self._get_session(session)
+                    if current_session:
                         logger.info(f"Session found")
-                        logger.info(f"{curremt_session.expires_at.tzinfo}")
-                        if curremt_session.expires_at <= now:
+                        if current_session.expires_at <= now:
                             try:
                                 await self._clear_sessions(session)
                                 logger.info(f"Session  was deleted successfully.")
                                 return None
                             except Exception : 
                                 logger.error(f"Failed to delete session :")
-                        logger.debug(f"session:{curremt_session.session_id}")     
-                        curremt_session.session_id = self.decrypt(curremt_session.session_id)
+                        logger.debug(f"session:{current_session.session_id}")  
+                        
+                        session_data = SessionData(
+                            session_id = self.decrypt(current_session.session_id),
+                            expires_at=current_session.expires_at,
+                        )   
+                        return session_data
                             
                     else:
                         logger.info("No session found.")
-                    return curremt_session
+                        return None 
                 except SQLAlchemyError as e:
                     logger.error(f"Database error while retrieving the first session: {e}")
                     raise

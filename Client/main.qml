@@ -22,6 +22,7 @@ Window {
     property color popupText: "red"
     property int secondsRemaining: 30
     property var popupMain: null 
+    property var appMain: null
 
     // Function to change the image opacity
     property var changeImageOpacity: function(newOpacity) {
@@ -184,6 +185,10 @@ Window {
             popupMain.adjustSize();
             popupMain.show();
             loginWindow.popupMain = popupMain;
+            if(loginWindow.appMain){
+                loginWindow.appMain.freezeComponents(true)
+                loginWindow.appMain.changeStaysOnTopHint()
+            }
         }else {
             console.error("Failed to create popup instance.");
         }
@@ -203,6 +208,7 @@ Window {
         visible = true;
         loginWindow.addWindowStaysOnTopHint();
         myLoader.source = "app/ui/LoginWindow.qml";
+        myLoader.item.freezeComponents(false);
     }
 
     function openAppWindow() {
@@ -211,8 +217,9 @@ Window {
         loginWindow.visible = false
         var component = Qt.createComponent("app/ui/App.qml");
         if (component.status === Component.Ready) {
-            var appWindow = component.createObject(loginWindow, {"loginWindowRef": this});
+            var appWindow = component.createObject(loginWindow);
             appWindow.show();
+            loginWindow.appMain = appWindow;
         } else {
             console.error("Cannot load App.qml", component.errorString());
         }
@@ -228,8 +235,18 @@ Window {
         if(popupTimer.running){
             console.log("pupupTimer is running");
             loginWindow.stopPopupTimer();
-
         }
+        if (appMain) {
+            console.log("Destroying appMain.");
+            appMain.addWindowStaysOnTopHint()
+            appMain.destroy();
+            appMain = null
+        }
+        if (popupMain) {
+            console.log("Destroying popupMain.");
+            popupMain.destroy();
+            popupMain = null;  
+        }
+        console.log("Closing login window.");
     }
-
 }

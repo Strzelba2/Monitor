@@ -14,6 +14,16 @@ class Config:
     env_session_server__file_path = os.path.join(BASE_DIR,"sessionServer",".env")
     env_client_file_path = os.path.join(BASE_DIR,"Client","config",".env")
     
+    DOMAIN = DOMAIN
+    
+    @classmethod
+    def change_session_server_domain(cls, domain: str) -> None:
+        """
+        Updates the DOMAIN dynamically.
+        """
+        cls.DOMAIN = f"{domain}:9876"
+        logger.info(f"Updated DOMAIN: {cls.DOMAIN}")
+    
     @classmethod
     def _set_env(cls,env_data:dict, path:str) -> None:
         """
@@ -36,6 +46,8 @@ class Config:
                         env_variables[key] = value
         
         env_variables.update(env_data)
+        
+        logger.info(f"env_variables: {env_variables}")
         
         with open(path, "w") as env_file:
             for key, value in env_variables.items():
@@ -84,12 +96,12 @@ class Config:
             "CA_PATH":CA_PATH,
             "CERT_PATH":CERT_PATH,
             "KEY_PATH":KEY_PATH,
-            "DOMAIN":DOMAIN,
+            "DOMAIN":cls.DOMAIN,
             "REQUEST_TIMEOUT":REQUEST_TIMEOUT,
             "REFRESH_TOKEN_TIME_DELTA":REFRESH_TOKEN_TIME_DELTA,
             "EXCEPTION_EVENT_FILE":EXCEPTION_EVENT_FILE,
         }
-        
+        logger.info(f"client data: {env_data}")
         cls._set_env(env_data, cls.env_client_file_path)
         
         

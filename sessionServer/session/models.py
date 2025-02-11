@@ -1,12 +1,17 @@
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
 from datetime import timedelta
+import secrets
 import re
 import uuid
 from .validators import *
+import json
+
+logger = logging.getLogger('django')
 
 def get_default_blocked_until():
     """
@@ -26,22 +31,26 @@ class BlockedIP(models.Model):
     """
     
     ip_address = models.CharField(
+        verbose_name=_("IP Adress"),
         max_length=255, 
         unique=True, 
         validators=[validate_ip_address_with_port],
         help_text="The IP address that is being blocked."
     )
     blocked_until = models.DateTimeField(
+        verbose_name=_("Block Until"),
         default=get_default_blocked_until,
         validators=[validate_blocked_until],
         help_text="The time until which the IP address will remain blocked."
     )
     path = models.CharField(
+        verbose_name=_("Path"),
         max_length=255,
         default="/default",
         help_text="The path associated with the blocked IP address (optional)."
     )
     user_agent = models.CharField(
+        verbose_name=_("User Agent"),
         max_length=255,
         default='',
         blank=True,
@@ -83,6 +92,11 @@ class BlockedIP(models.Model):
         """
         return self.ip_address
     
+    class Meta:
+        verbose_name = _("Blocked IP Address")
+        verbose_name_plural = _("Blocked IP Address")
+        ordering = ["-ip_address"]
+    
 class RequestLog(models.Model):
     """
     Represents a log entry for a request made to the system.
@@ -92,30 +106,35 @@ class RequestLog(models.Model):
     """
     
     path = models.CharField(
+        verbose_name=_("Path"),
         max_length=255,
         blank=True,
         null=True,
         help_text="The URL path of the requested resource."
     )
     method = models.CharField(
+        verbose_name=_("Method"),
         max_length=10,
         blank=True,
         null=True,
         help_text="The HTTP method used for the request (e.g., GET, POST, PUT)."
     )
     ip_address = models.CharField(
+        verbose_name=_("IP Adress"),
         max_length=45,
         blank=True,
         null=True,
         help_text="The IP address of the client making the request."
     )
     user_agent = models.CharField(
+        verbose_name=_("User Agent"),
         max_length=255,
         blank=True,
         null=True,
         help_text="The user agent string sent by the client's browser."
     )
     timestamp = models.DateTimeField(
+        verbose_name=_("Timestamp"),
         auto_now_add=True,
         blank=True,
         null=True,
@@ -161,6 +180,11 @@ class RequestLog(models.Model):
         """
         return f"{self.method} {self.path} from {self.ip_address} at {self.timestamp}"
     
+    class Meta:
+        verbose_name = _("Requests logs")
+        verbose_name_plural = _("Requests logs")
+        ordering = ["-ip_address"]
+    
 class Server(models.Model):
     """
     Represents a server in your system.
@@ -171,18 +195,25 @@ class Server(models.Model):
     """
     
     name = models.CharField(
+        verbose_name=_("Server Name"),
         max_length=100,
+        unique=True,
+        blank=False,
         help_text="The name of the server."
     )
     ip_address = models.GenericIPAddressField(
+        verbose_name=_("IP Adress"),
         unique=True,
+        blank=False,
         help_text="The IP address of the server."
     )
     port = models.IntegerField(
+        verbose_name=_("Port"),
         validators=[MinValueValidator(1), MaxValueValidator(65535)],
         help_text="The port number of the server."
     )
     location = models.CharField(
+        verbose_name=_("Server Location"),
         max_length=100,
         help_text="The location of the server."
     )
@@ -191,15 +222,23 @@ class Server(models.Model):
         blank=True,
         null=True,
         on_delete=models.SET_NULL,
-        help_text="The user associated with the server (optional)."
+        help_text="The user associated with the server (optional).",
+        verbose_name=_("User")
     )
     trusty = models.BooleanField(
+        verbose_name=_("If Trust"),
         default=False,
         help_text="Indicates whether the server is trusted."
     )
     available = models.BooleanField(
+        verbose_name=_("If Available"),
         default=False,
         help_text="Indicates whether the server is available."
+    )
+    screens = models.IntegerField(
+        verbose_name=_("Screens"),
+        default=1,
+        help_text="Indicates how many screens server have."
     )
     
     def clean(self):
@@ -251,6 +290,14 @@ class Server(models.Model):
         """
         return self.name
     
+    class Meta:
+        verbose_name = _("Server")
+        verbose_name_plural = _("Server")
+        ordering = ["-name"]
+
+def get_expiry_time_session():
+    return timezone.now() + timedelta(hours=settings.MAX_EXPIRATION_HOURS)
+    
 class Session(models.Model):
     """
     Represents a user session within the system.
@@ -270,9 +317,11 @@ class Session(models.Model):
         unique=True,
         blank=False,
         null=False,
-        help_text="The user associated with this session."
+        help_text="The user associated with this session.",
+        verbose_name=_("User")
     )
     sessionId = models.CharField(
+        verbose_name=_("Session Id"),
         max_length=32,
         unique=True,
         blank=False,
@@ -287,14 +336,17 @@ class Session(models.Model):
         unique=True,
         blank=False,
         null=False,
-        help_text="The server where this session is active\."
+        help_text="The server where this session is active\.",
+        verbose_name=_("Server")
     )
     expires = models.DateTimeField(
-        default=timezone.now() + timedelta(hours=2),
+        verbose_name=_("Session expiry"),
+        default=get_expiry_time_session,
         editable=False,
         help_text="The timestamp when this session will expire\."
     )
     created = models.DateTimeField(
+        verbose_name=_("Created"),
         auto_now_add=True,
         editable=False,
         help_text="The timestamp when this session was created\."
@@ -380,4 +432,150 @@ class Session(models.Model):
             "abc123def456 for prod-server1 to time 2023-11-22 15:00:00"
         """
         return f"{self.sessionId} for {self.server.name} to time {self.expires}"
+    
+    class Meta:
+        verbose_name = _("Session")
+        verbose_name_plural = _("Session")
+        ordering = ["-created"]
+
+def get_expiry_time_token():
+    """
+    Calculates the expiration time for a temporary token.
+    
+    Returns:
+        timezone.datetime: The expiration timestamp based on the current time and the configured expiration duration.
+    """
+    return timezone.now() + timedelta(minutes=settings.TEMPORARY_TOKEN_EXPIRATION_MINUTES)
+    
+class TemporaryToken(models.Model):
+    """
+    Model representing a temporary token assigned to a session with an expiration time.
+    """
+    TEMPORARY_TOKEN_EXPIRATION_MINUTES = settings.TEMPORARY_TOKEN_EXPIRATION_MINUTES
+    CREATED_TOLERANCE = settings.CREATED_TOLERANCE_SECONDS
+    
+    token = models.CharField(
+        verbose_name=_("Token"),
+        max_length=128,
+        unique=True,
+        blank=False,
+        editable=False,
+        help_text="The unique token for calculate HMAC."
+    )
+    session = models.ForeignKey(
+        Session,
+        verbose_name=_("Session"),
+        on_delete=models.CASCADE,
+        editable=False,
+        help_text=_("Session to which the temorary token is assigned."),
+    )
+    created_at = models.DateTimeField(
+        verbose_name=_("Created"),
+        auto_now_add=True,
+        blank=False,
+        editable=False,
+        help_text="The timestamp when this token was created."
+    )
+    expires_at = models.DateTimeField(
+        verbose_name=_("Temporary Token expiry"),
+        default=get_expiry_time_token,
+        editable=False,
+        blank=False,
+        help_text="The timestamp when this token will expire."
+    )  
+    
+    path = models.CharField(
+        verbose_name=_("path"),
+        max_length=128,
+        blank=False,
+        editable=False,
+        help_text="Path of the request."
+    )
+
+    def generate_temporary_token(self) -> str:
+        """
+        Generates a cryptographically secure temporary token.
+        
+        Returns:
+            str: A 256-bit secure random token in URL-safe format.
+        """
+        return secrets.token_urlsafe(32) 
+    
+    def is_expired(self) -> bool:
+        """
+        Checks if the temporary token is expired.
+        
+        Returns:
+            bool: True if the token has expired, False otherwise.
+        """
+        logger.info(f"Checking expiration: expires_at={self.expires_at}, now={timezone.now()}")
+        return timezone.now() > self.expires_at
+    
+    def has_related_object(self,name:str) -> bool:
+        """
+        Checks if the token has a related object with the given attribute name.
+        
+        Args:
+            name (str): The attribute name to check.
+        
+        Returns:
+            bool: True if the related object exists, False otherwise.
+        """
+        return hasattr(self, name)
+    
+    def clean(self) -> None:
+        """
+        Validates the integrity and correctness of the temporary token instance.
+        
+        Raises:
+            ValidationError: If any validation rule fails.
+        """
+        if not self.has_related_object("session"):
+            raise ValidationError("no session to generate token")
+
+        if self.is_expired():
+            raise ValidationError("Token has expired.")
+
+        if self.created_at  and abs(self.created_at - timezone.now()) > timedelta(seconds=self.CREATED_TOLERANCE):
+            raise ValidationError(f"Created time seems unexpected. Please check system time.")
+        
+        logger.info(f"Token Validation: created_at={self.created_at}, expires_at={self.expires_at}")
+        
+        if self.created_at > self.expires_at:
+            raise ValidationError(f"token has expired") 
+        
+        if self.session.expires < self.created_at:
+            raise ValidationError(f"Session has expired") 
+        
+        super().clean()
+    
+    def save(self, *args, **kwargs) -> None:
+        """
+        Saves the temporary token instance, ensuring valid defaults are set.
+        """
+        if not self.token:
+            self.token = self.generate_temporary_token()
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(minutes=self.TEMPORARY_TOKEN_EXPIRATION_MINUTES)  
+        if not self.created_at:
+            self.created_at = timezone.now()
+            
+        self.full_clean()
+        
+        logger.debug(f"Saving TemporaryToken: token=...., created_at={self.created_at}, expires_at={self.expires_at}")
+        super().save(*args, **kwargs)
+        
+    def __str__(self) -> str:
+        """
+        Returns a human-readable representation of the TemporaryToken instance.
+        
+        Returns:
+            str: A formatted string representing the token and its associated session.
+        """
+        return f"{self.token} for {self.session.sessionId}/{self.session.server.name}"
+    
+    class Meta:
+        verbose_name = _("Temporary Token")
+        verbose_name_plural = _("Temporary Token")
+        ordering = ["-expires_at"]
     

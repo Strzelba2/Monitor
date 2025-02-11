@@ -1,5 +1,6 @@
 from django.contrib.auth import authenticate, logout , login
 from django.views.decorators.debug import sensitive_post_parameters
+from django.db import transaction
 from django.utils.decorators import method_decorator
 from oauth2_provider.models import AccessToken, Application, RefreshToken
 from oauth2_provider.views import TokenView, RevokeTokenView
@@ -21,6 +22,7 @@ from datetime import timedelta
 from oauth2_provider.settings import oauth2_settings
 import pyotp
 from .models import User, UsedToken
+from session.models import Session as ServerSession, Server
 from .two_factor import TwoFactor
 from django.core.mail import send_mail
 from django.urls import reverse
@@ -452,6 +454,20 @@ class LogoutAPIView(views.APIView,RevokeTokenView):
                 except Application.DoesNotExist:
                     logger.error("No application found for user")
                     return Response({'error': 'Application for user not found'}, status=status.HTTP_400_BAD_REQUEST)
+                
+                with transaction.atomic(): 
+                    existing_session = ServerSession.objects.filter(user=request.user).first()
+                    
+                    if existing_session:
+                        existing_session.delete()
+                        logger.debug("the existing session has been deleted")
+
+                    server = Server.objects.filter(user=request.user).first()
+                    if server:
+                        if server:
+                            server.available = True
+                            server.user = None
+                            server.save()
                 
                 request_data = request.POST.copy()
                 request_data['token'] = access_token.token

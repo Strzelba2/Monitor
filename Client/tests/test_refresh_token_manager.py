@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import asyncio
 import logging
 
-from app.models.refresh_token import RefreshTokenManager
+from app.managers.refresh_token import RefreshTokenManager
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class TestRefreshTokenManager(unittest.IsolatedAsyncioTestCase):
         """Test the behavior of the _refresh_token coroutine."""
         logger.info("Started: test_refresh_token_coroutine")
         
-        with patch("app.models.user_manager.UserManager.notify_token_refreshed") as user_manager_mock:
+        with patch("app.managers.user_manager.UserManager.notify_token_refreshed") as user_manager_mock:
             self.manager.start(refresh_interval=0.2)
             
             await asyncio.sleep(1)
@@ -75,7 +75,7 @@ class TestRefreshTokenManager(unittest.IsolatedAsyncioTestCase):
     async def test_refresh_token_coroutine_cancel(self):
         """Test the behavior of the _refresh_token coroutine canceled."""
         logger.info("Started: test_refresh_token_coroutine_cancel")
-        with patch("app.models.user_manager.UserManager.notify_token_refreshed") as user_manager_mock:
+        with patch("app.managers.user_manager.UserManager.notify_token_refreshed") as user_manager_mock:
             self.manager.start(refresh_interval=0.2)
             
             await asyncio.sleep(0.3)
@@ -89,12 +89,11 @@ class TestRefreshTokenManager(unittest.IsolatedAsyncioTestCase):
     async def test_stop_valid(self):
         """Test stopping the manager when a task is running."""
         logger.info("Started: test_stop_valid")
-        with patch("app.models.user_manager.UserManager.notify_token_refreshed") as user_manager_mock:
+        with patch("app.managers.user_manager.UserManager.notify_token_refreshed") as user_manager_mock:
             self.manager.start(refresh_interval=0.2)
             
             await asyncio.sleep(0.3)
-            self.manager.stop()
-            await asyncio.sleep(0.2)
+            await self.manager.stop()
 
             self.assertEqual(user_manager_mock.call_count,1)
             self.assertFalse(self.manager.is_running)

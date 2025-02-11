@@ -5,6 +5,7 @@ from .refresh_token import RefreshTokenManager
 from sqlalchemy.exc import  SQLAlchemyError
 from app.exceptions.database_exc import TokenDBManagerError
 from app.database.data_factory import create_tokens
+import asyncio
 
 import logging
 
@@ -23,6 +24,7 @@ class TokenManager():
         """
         self._token_db_manager = TokenDManager()
         self._refresh_token = RefreshTokenManager()
+        self._condition = asyncio.Condition() 
         
     def generate_secret_key(self, code_2fa: str, password: str) -> None:
         """
@@ -72,8 +74,7 @@ class TokenManager():
             if not self._token_db_manager:
                 raise ValueError("Token database manager is not initialized.")
             
-            self._token_db_manager.cipher = None
-            self._token_db_manager.key = None
+            self._token_db_manager.encryt_data.clear()
             logger.info("Secret key cleared.")
         except AttributeError as e:
             logger.error(f"Failed to clear secret key: Token database manager attributes are missing. {e}")
@@ -124,6 +125,12 @@ class TokenManager():
             Exception: For unexpected errors.
         """
         try:
+            async with self._condition:
+                while not self._refresh_token.is_running: 
+                    timeout = 10
+                    logger.info("Waiting for token to become valid...")
+                    await asyncio.wait_for(self._condition.wait(), timeout=timeout)
+                    
             access_token = await self._token_db_manager.get_valid_token("access")
             return access_token
         except ValueError as e:
@@ -131,6 +138,9 @@ class TokenManager():
             raise
         except SQLAlchemyError as e:
             logger.error(f"Database error while retrieving access token: {e}")
+            raise
+        except asyncio.TimeoutError:
+            logger.error("Timeout occurred while waiting for the token to become valid.")
             raise
         except Exception as e:
             logger.exception(f"Unexpected error while retrieving access token: {e}")
@@ -168,7 +178,7 @@ class TokenManager():
             except Exception as e:
                 logger.exception(f"Failed to clear {token_type} tokens: {e}")
         
-    def start_refresh_timer(self,refresh_interval: int = 8400) -> None:
+    async def start_refresh_timer(self,refresh_interval: int = 8400) -> None:
         """
         Start the token refresh timer.
 
@@ -179,8 +189,10 @@ class TokenManager():
             RuntimeError: If the refresh timer is already running.
         """
         try:
-            self._refresh_token.start(refresh_interval)
-            logger.info(f"Token refresh timer started with interval: {refresh_interval} seconds.")
+            async with self._condition:
+                self._refresh_token.start(refresh_interval)
+                logger.info(f"Token refresh timer started with interval: {refresh_interval} seconds.")
+                self._condition.notify_all() 
         except RuntimeError as e:
             logger.error(f"Failed to start refresh timer: {e}")
             raise
@@ -195,8 +207,9 @@ class TokenManager():
         Logs the success or failure of the operation.
         """
         try:
-            await self._refresh_token.stop()
-            logger.info("Token refresh timer stopped successfully.")
+            async with self._condition:
+                await self._refresh_token.stop()
+                logger.info("Token refresh timer stopped successfully.")
         except Exception as e:
             logger.exception(f"Unexpected error while stopping refresh timer: {e}")
             raise

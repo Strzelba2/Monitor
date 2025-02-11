@@ -7,17 +7,19 @@ import subprocess
 import pyotp
 from jsonrpcclient import request
 import requests
-import time
+import time 
 import sys
 import os
+from dotenv import load_dotenv
 from robot.api import logger
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'Resources')))
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "sessionServer.config.settings")
 
 from BaseLib import BaseLib
-from Verification.Config.config import Config, EMAIL, USERNAME
+from Verification.Config.config import Config, EMAIL, USERNAME, DOMAIN
 from sessionServer.userauth.two_factor import TwoFactor
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -49,6 +51,27 @@ class AppKeywords(BaseLib):
         logger.info("Setting environment variables for session server and client.")
         Config.set_session_server_env()
         Config.set_client_env()
+        time.sleep(2)
+     
+    @keyword("Set Client Env")   
+    def set_client_env(self) -> None:
+        """
+        Configures the environment for the client.
+        """
+        logger.info("Setting environment variables for  client.")
+        Config.set_client_env()
+        time.sleep(2)
+      
+    @keyword("Change Server Domain")  
+    def change_session_server_domain(self, domain:str) -> None:
+        """
+        Change session server name for test connection.
+
+        Args:
+            domain (str): domain name.
+        """
+        Config.change_session_server_domain(domain)
+        logger.info(f"DOMAIN:{Config.DOMAIN}")
  
     @keyword("Start Session Server")
     def start_session_server(self,docker_compose_path:str) -> None:
@@ -145,10 +168,16 @@ class AppKeywords(BaseLib):
         logger.info("Starting the client application.")
         api_path = os.path.join(BASE_DIR,"Client","main.py")
         args = ["python3", api_path, "--test", "true"]
+        
+        env_path = Config.env_client_file_path
+        if os.path.exists(env_path):
+            logger.info(f"Loading environment variables from {env_path}")
+        load_dotenv(env_path, override=True)
 
         self.app_process = subprocess.Popen(
             args,
-            shell=True
+            shell=True,
+            env=os.environ
         )
         time.sleep(5)
    
@@ -161,6 +190,8 @@ class AppKeywords(BaseLib):
             logger.info("Stopping the client application.")
             self.app_process.terminate()
             self.app_process.wait()
+            
+        self.app_process = None
     
     @keyword("Check If App Running")
     def check_if_app_running(self) -> bool:
@@ -375,6 +406,7 @@ class AppKeywords(BaseLib):
             
         for log_file in log_files:
             if os.path.exists(log_file):
+                logger.info(f"path exist:{log_file}")
                 shutil.copy(log_file, temp_dir)
             else:
                 print(f"Warning: Log file not found: {log_file}")

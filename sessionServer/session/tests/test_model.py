@@ -1,9 +1,10 @@
 from django.test import TestCase
 from django.conf import settings
 from django.utils import timezone
-from session.models import BlockedIP, RequestLog, Server, Session
+from session.models import BlockedIP, RequestLog, Server, Session, TemporaryToken
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
+from datetime import timedelta
 import uuid
 import logging
 
@@ -291,8 +292,10 @@ class BlockedIPModelTest(TestCase):
         blocked_ip2 = BlockedIP.objects.create(ip_address="192.168.0.2", blocked_until=timezone.now() + timezone.timedelta(hours=2))
         blocked_ips = BlockedIP.objects.all()
         
-        self.assertEqual(blocked_ips[0], blocked_ip1)
-        self.assertEqual(blocked_ips[1], blocked_ip2)
+        logger.info(f"List: {blocked_ips}")
+
+        self.assertEqual(blocked_ips[0], blocked_ip2)
+        self.assertEqual(blocked_ips[1], blocked_ip1)
         
         logger.info("Test passed test_ordering")
         
@@ -1346,7 +1349,7 @@ class SessionModelTest(TestCase):
         logger.info("Starting test: test_server_delete_cascades_to_session")
         
         server = Server.objects.create(
-            name='TestServer1',
+            name='TestServer2',
             ip_address='196.0.0.1',
             port=8080,
             location='Datacenter',
@@ -1594,6 +1597,96 @@ class SessionModelTest(TestCase):
         self.assertEqual(Session.objects.count(), 0, "should be no one object" )
         
         logger.info("Test passed: test_delete_session")
+        
+        
+class TemporaryTokenTestCase(TestCase):
+    def setUp(self):
+        """Set up test data for TemporaryToken model."""
+        
+        self.user = get_user_model().objects.create_user(
+                                                username='testuser',
+                                                password='testD.pass123',
+                                                email='email@example.com',
+                                                first_name='testuser',
+                                                last_name='Czwarty',
+                                                )
+
+        self.server = Server.objects.create(
+            name='TestServer',
+            ip_address=IP_ADDRESS,
+            port=8080,
+            location='Datacenter',
+            user=self.user,
+            trusty=True,
+            available=True
+        )
+        
+        self.session = Session.objects.create(user=self.user,server=self.server)
+        
+    def test_generate_temporary_token(self):
+        """Test token generation logic."""
+        logger.info("Starting test: test_generate_temporary_token")
+        token = TemporaryToken().generate_temporary_token()
+        self.assertEqual(len(token), 43)
+        
+        logger.info("Test Passed: test_generate_temporary_token")
+        
+    def test_token_creation(self):
+        """Test creating a TemporaryToken instance."""
+        logger.info("Starting test: test_token_creation")
+        token = TemporaryToken.objects.create(session=self.session, path = "testPath")
+        self.assertIsNotNone(token.token)
+        self.assertFalse(token.is_expired())
+        self.assertGreaterEqual(token.expires_at, timezone.now())
+        
+        logger.info("Test Passed: test_token_creation")
+        
+    def test_is_expired(self):
+        """Test the is_expired method."""
+        logger.info("Starting test: test_is_expired")
+        token = TemporaryToken.objects.create(session=self.session, path = "testPath")
+        self.assertFalse(token.is_expired())
+
+        # Simulate token expiration
+        with self.assertRaises(ValidationError) as context:
+            token.expires_at = timezone.now() - timedelta(minutes=1)
+            token.save()
+        self.assertIn("Token has expired.", str(context.exception))
+        
+        logger.info("Test Passed: test_is_expired")
+        
+    def test_creation_no_session(self):
+        """Test validation error when no session is assigned."""
+        logger.info("Starting test: test_creation_no_session")
+        
+        with self.assertRaises(ValidationError) as context:
+            token = TemporaryToken.objects.create(session=None, path = "testPath")
+        self.assertIn("no session to generate token", str(context.exception))
+        
+        logger.info("Test Passed: test_creation_no_session")
+        
+    def test_creation_token_expired(self):
+        """Test validation error when token is expired."""
+        logger.info("Starting test: test_creation_token_expired")
+        
+        with self.assertRaises(ValidationError) as context:
+            token = TemporaryToken.objects.create(session=self.session, expires_at=timezone.now() - timedelta(minutes=1), path = "testPath")
+        self.assertIn("Token has expired.", str(context.exception))
+        
+        logger.info("Test Passed: test_creation_token_expired")
+        
+    def test_creation_created_after_expiry(self):
+        """Test validation error when created_at is after expires_at."""
+        logger.info("Starting test: test_creation_created_after_expiry")
+        
+        with self.assertRaises(ValidationError) as context:
+            token = TemporaryToken.objects.create(session=self.session, created_at=timezone.now() + timedelta(minutes=10), path = "testPath")
+        self.assertIn("Created time seems unexpected. Please check system time.", str(context.exception))
+        
+        logger.info("Test Passed: test_creation_created_after_expiry")
+
+           
+
 
         
 

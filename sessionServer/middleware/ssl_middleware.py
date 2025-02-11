@@ -4,6 +4,7 @@ from rest_framework import status
 from oauth2_provider.models import AccessToken
 from django.contrib.auth import get_user_model
 from userauth.models import User
+from session.models import Server
 from utils.responses import formatted_response
 import json
 import logging
@@ -15,11 +16,28 @@ logger = logging.getLogger('django')
 
 
 class SSLMiddleware:
+    """
+    Middleware to enforce SSL/TLS connections and validate client certificates.
+    """
     def __init__(self, get_response):
+        """
+        Initialize the SSLMiddleware.
+        
+        Args:
+            get_response (callable): The next middleware or view in the Django request-response cycle.
+        """
         self.get_response = get_response
         
     def veryfy_request(self,request):
+        """
+        Verify if response should by JsonResponse or TemplateResponse  based on its content type.
+        
+        Args:
+            request (HttpRequest): The incoming HTTP request.
+        """
+        logger.debug("Verifying request content type")
         if request.META.get('HTTP_ACCEPT', '').startswith('text/html'):
+            logger.info("Browser access attempt detected")
             return formatted_response(
                             request, 
                             {'error': 'Browser access not allowed'},
@@ -27,6 +45,15 @@ class SSLMiddleware:
                             status_code=status.HTTP_403_FORBIDDEN)
 
     def __call__(self, request):
+        """
+        Process incoming requests, enforcing HTTPS and validating client certificates.
+        
+        Args:
+            request (HttpRequest): The incoming HTTP request.
+        
+        Returns:
+            HttpResponse: The processed response, or an error response if validation fails.
+        """
         logger.debug("SSLMiddleware invoked for request")
         
         # Check if HTTPS is required
@@ -59,9 +86,21 @@ class SSLMiddleware:
                                     {'error': 'not a valid certificate.'},
                                     template_name='error.html',
                                     status_code=status.HTTP_401_UNAUTHORIZED)
+                
+            if path in ["updateServer","verifySession"] :
+                logger.debug("Processing updateServer or verifySession path")
+                logger.debug(f" path: {request.path}")
+
+                server_exists = Server.objects.filter(name=client_cn).exists()
+                if not server_exists:
+                    logger.warning(f"Server {client_cn} does not exist in database")
+                    return JsonResponse({'error': 'Invalid server name'}, status=status.HTTP_401_UNAUTHORIZED)
+                
+                logger.debug(f"Server {client_cn} validation successful")
+                return self.get_response(request)
             
             if not User.is_user_allowed(client_cn):
-                logger.warning('not a valid user')
+                logger.warning('Unauthorized user attempt detected')
                 return formatted_response(
                                     request, 
                                     {'error': 'not a valid user'},
@@ -81,6 +120,7 @@ class SSLMiddleware:
                     body = json.loads(request.body)
                     username = body.get('username')
                 except json.JSONDecodeError:
+                    logger.error("Invalid JSON received in login request")
                     return JsonResponse({'error': 'Invalid JSON'}, status=status.HTTP_403_FORBIDDEN)
 
                 if not username:
@@ -110,8 +150,8 @@ class SSLMiddleware:
                 request.email = email
                
             # Handle token refresh path - validate client CN and access token's user
-            elif path in [ "refresh","logout"]:
-                logger.debug("Processing /refresh ot /logout path")
+            elif path in [ "refresh","logout","availableServers","session","logoutSession","updateSession","send"]:
+                logger.debug("Processing /refresh or /logout or /availableServers or /session etc. path")
                 
                 response = self.veryfy_request(request)
                 if response:
@@ -176,6 +216,7 @@ class SSLMiddleware:
                 logger.debug("certificate correct for user")
             
             else:
+                logger.debug(f"incorrect path: {path}")
                 return formatted_response(
                                     request, 
                                     {'error': 'not a valid path'},

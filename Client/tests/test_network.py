@@ -2,14 +2,19 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 from aiohttp import ClientSession, ClientTimeout,ClientSSLError
 from aiohttp.client_reqrep import ConnectionKey
-from app.network.Session_client import SessionClient
+from aiohttp import web
+import aiohttp
+from app.network.session_client import SessionClient
+from app.network.server_Client import ServerClient
 from app.database.data_factory import create_tokens
+from app.exceptions.connection_exc import UnauthorizedConnectionError
 from config.config import Config
 from qasync import QEventLoop
 from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtCore import QTimer
 from PyQt6.QtCore import QObject, pyqtSignal
 import asyncio
+import time
 import ssl
 
 import logging
@@ -56,7 +61,7 @@ class TestSessionClient(unittest.IsolatedAsyncioTestCase):
     def tearDown(self):
         self.app.quit()
         
-    @patch("app.network.Session_client.ssl.SSLContext")
+    @patch("app.network.session_client.ssl.SSLContext")
     def test_configure_ssl_context(self, mock_ssl_context):
         """
         Test if the SSL context is configured properly.
@@ -75,7 +80,7 @@ class TestSessionClient(unittest.IsolatedAsyncioTestCase):
         
         logger.info("Test passed: test_configure_ssl_context")
         
-    @patch("app.network.Session_client.aiohttp.ClientSession")
+    @patch("app.network.session_client.aiohttp.ClientSession")
     async def test_create_session(self, mock_client_session):
         """
         Test session creation with correct configurations.
@@ -277,4 +282,176 @@ class TestSessionClient(unittest.IsolatedAsyncioTestCase):
         )
         
         logger.info("Test passed: test_send_logout_request_success")
+        
+        
+class TestServerClient(unittest.IsolatedAsyncioTestCase):
+    """
+    Test case for the ServerClient class, covering session creation, 
+    stream requests, and error handling.
+    """
+    async def asyncSetUp(self):
+        """
+        Set up the test case by initializing the ServerClient instance 
+        and creating a session.
+        """
+        self.client = ServerClient()
+        self.runner = None
+        await self.client.create_session()
+
+    async def asyncTearDown(self):
+        """
+        Clean up resources after each test by closing the session 
+        and stopping the server if it was started.
+        """
+        if self.runner:
+            await self.runner.cleanup()
+        await self.client.close_session()
+        
+    async def set_fake_handler(self, handler):
+        """
+        Dynamically replace the request handler in the aiohttp server's router.
+        
+        Args:
+            handler (Callable): The request handler function to be added.
+        """
+        self.app = web.Application()
+        self.app.router.add_get("/stream", handler)
+        await self.start_server() 
+        
+    async def start_server(self):
+        """
+        Start the aiohttp server to apply new routes.
+        """
+        self.runner = web.AppRunner(self.app)
+        await self.runner.setup()
+        self.site = web.TCPSite(self.runner, "localhost", 8081)
+        await self.site.start()
+        
+    async def test_create_session(self):
+        """
+        Test that a session is successfully created.
+        """
+        logger.info("Started: test_create_session")
+        self.client.session = None
+        await self.client.create_session()
+        self.assertIsNotNone(self.client.session)
+        logger.info("Test Passed: test_create_session")
+        
+    @patch("aiohttp.ClientSession.get")
+    async def test_send_stream_request_success(self, mock_get):
+        """
+        Test that a successful stream request retrieves the expected frame.
+        """
+        logger.info("Started: test_send_stream_request_success")
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content.readuntil = AsyncMock(side_effect=[b"--frame\r\n", b"image_data\r\n--frame"])
+        mock_response.content.readline = AsyncMock(return_value=b"\r\n")
+        
+        mock_get.return_value.__aenter__.return_value = mock_response
+        self.client.running = True
+        
+        url = "http://test.com"
+        token = "test_token"
+        
+        gen = self.client.send_stream_request(url, token)
+        
+        first_frame = await anext(gen)
+        self.assertEqual(first_frame, b"image_data")
+        
+        logger.info("Test Passes: test_send_stream_request_success")
+        
+    @patch("aiohttp.ClientSession.get")
+    async def test_send_stream_request_unauthorized(self, mock_get):
+        """
+        Test that an unauthorized stream request raises an exception.
+        """
+        logger.info("Started: test_send_stream_request_unauthorized")
+        mock_response = MagicMock()
+        mock_response.status = 401
+        mock_get.return_value.__aenter__.return_value = mock_response
+        
+        url = "http://test.com"
+        token = "test_token"
+        
+        with self.assertRaises(UnauthorizedConnectionError):
+            gen = self.client.send_stream_request(url, token)
+            await anext(gen)
+            
+        logger.info("Test Passed: test_send_stream_request_unauthorized")
+            
+    async def test_send_stream_request_timeout(self):
+        """
+        Test that a timeout occurs when no valid frame is received from the stream.
+        """
+        logger.info("Started: test_send_stream_request_timeout")
+        self.client.running = True
+
+        url = "http://localhost:8081/stream"
+        token = "test_token"
+        
+        async def fake_stream(request):
+            async def stream_response(writer):
+                try:
+                    for _ in range(100): 
+                        await asyncio.sleep(0.1) 
+                        await writer.write(b"random_data_without_boundary")
+                except (aiohttp.ClientConnectionError, asyncio.CancelledError):
+                    print("Client disconnected")
+                except Exception as e:
+                    print(f"Unexpected error: {e}")
+
+            response = web.StreamResponse(status=200)
+            response.content_type = "application/octet-stream"
+            await response.prepare(request)
+            await stream_response(response)
+            return response
+        
+        await self.set_fake_handler(fake_stream)
+        
+        with self.assertRaises(Exception) as context:
+            gen = self.client.send_stream_request(url, token)
+            await anext(gen)
+        
+        logger.info(f"exception: {context.exception}")
+        self.assertIn("No valid frame received", str(context.exception))
+        
+        logger.info("Test Passed: test_send_stream_request_timeout")
+        
+    async def test_large_response(self):
+        """
+        Test that an excessively large response raises an error.
+        """
+        logger.info("Started: test_large_response")
+        self.client.running = True
+
+        url = "http://localhost:8081/stream"
+        token = "test_token"
+        
+        async def fake_stream(request):
+            response = web.StreamResponse(status=200)
+            response.content_type = "application/octet-stream"
+            await response.prepare(request)
+
+            try:
+                for _ in range(10**6): 
+                    await response.write(b"A" * 1024*1024)  
+                    await asyncio.sleep(0.001) 
+            except asyncio.CancelledError:
+                print("Client disconnected")
+            except Exception as e:
+                print(f"Error: {e}")
+
+            return response
+        
+        await self.set_fake_handler(fake_stream)
+        
+        with self.assertRaises(Exception) as context:
+            gen = self.client.send_stream_request(url, token)
+            await anext(gen)
+        
+        logger.info(f"exception: {context.exception}")
+        self.assertIn("Chunk too big", str(context.exception))
+        
+        logger.info("Test Passed: test_large_response")
         

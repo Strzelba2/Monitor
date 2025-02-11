@@ -144,15 +144,29 @@ Window {
         running: false;
         onTriggered: {
             console.log("closeTimer triggered: Finalizing popup closure.");
-            myLoader.item.freezeComponents(false); 
-            sessionview.refresh_state();
-            loginWindow.freezeWindow = false;
-            loginWindow.changeImageOpacity(1);
-            loginWindow.popupMain = null;
+
             if (loginWindow.criticalError) {
-                console.info("Critical error detected. Closing login window.");
+                console.info("Critical error detected. Closing login window.",loginWindow.criticalError);
+                if (loginWindow.appMain){
+                    loginWindow.showWindow()
+                }
                 loginWindow.close();
+                return;
             }
+   
+            if(loginWindow.appMain){
+                loginWindow.appMain.freezeComponents(false)
+                loginWindow.popupMain = null;
+                loginWindow.appMain.addWindowStaysOnTopHint()
+                loginWindow.freezeWindow = false;
+            }else{
+                myLoader.item.freezeComponents(false); 
+                sessionview.refresh_state();
+                loginWindow.freezeWindow = false;
+                loginWindow.changeImageOpacity(1);
+                loginWindow.popupMain = null;     
+            }
+
             console.log("Destroying popupMain instance.");
             popupMain.destroy();
         }

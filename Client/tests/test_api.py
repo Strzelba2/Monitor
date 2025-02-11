@@ -2,9 +2,10 @@ from jsonrpcserver import method, Result, Success, Error, async_dispatch
 from PyQt6.QtCore import QObject,QPointF,QPoint
 from PyQt6.QtQuick import QQuickItem
 from PyQt6.QtGui import QGuiApplication
+from config.config import Config
 
 import json
-import asyncio
+import socket
 import logging
 from aiohttp import web
 from aiohttp.web_request import Request
@@ -260,6 +261,12 @@ class TestApi:
         elif "error" in response_dict:
             return web.json_response(response_dict, status=500)
         return web.Response(status=204)
+    
+    def is_port_in_use(self,port: int) -> bool:
+        """Check if port is free."""
+        logger.info("check if port is free")
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            return s.connect_ex(("localhost", port)) == 0 
 
     async def start_server(self) -> None:
         """
@@ -271,6 +278,10 @@ class TestApi:
         Returns:
             None
         """
+        port = int(Config.API_PORT)
+        if self.is_port_in_use(port):
+            logger.warning(f"Port {port} is not free.")
+            return
         logger.info("Configuring the JSON-RPC server...")
         self.app.router.add_post("/api", self.handle)
         self.runner = web.AppRunner(self.app)

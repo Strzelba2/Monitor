@@ -39,7 +39,14 @@ class TestSessionManager(unittest.IsolatedAsyncioTestCase):
         async with self.test_engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
         await self.test_engine.dispose()
+        
+    async def test_shared_cipher(self):
+        """Test if cipher can by init once"""
+        token_manager = TokenDManager(session_factory=self.TestSessionLocal)
 
+        self.assertIsNotNone(self.session_manager.cipher)
+        self.assertIsNotNone(token_manager.cipher)
+        
     async def test_create_session_success(self):
         """Test successful creation of a session."""
         logger.info("Started: test_create_session_success")
@@ -47,7 +54,7 @@ class TestSessionManager(unittest.IsolatedAsyncioTestCase):
         session_id = "test_session_id"
         now = datetime.now(timezone.utc)
         expired = now + timedelta(hours=2)
-        await self.session_manager.update_session(session_id,now,expired)
+        await self.session_manager.update_session(session_id,expired)
 
         session = await self.session_manager.get_session()
         self.assertEqual(session.session_id, session_id)
@@ -60,9 +67,9 @@ class TestSessionManager(unittest.IsolatedAsyncioTestCase):
         session_id = "test_session_id"
         now = datetime.now(timezone.utc)
         expired = now + timedelta(hours=2)
-        await self.session_manager.update_session(session_id,now,expired)
+        await self.session_manager.update_session(session_id,expired)
 
-        await self.session_manager.update_session(session_id,now,expired)
+        await self.session_manager.update_session(session_id,expired)
         
         session = await self.session_manager.get_session()
         self.assertEqual(session.session_id, session_id)
@@ -89,7 +96,7 @@ class TestSessionManager(unittest.IsolatedAsyncioTestCase):
             async with session.begin():
                 session.add(session_data)
 
-        await self.session_manager.update_session("existing_session",session_data.created_at,session_data.expires_at)
+        await self.session_manager.update_session("existing_session",session_data.expires_at)
         
         current_session = await self.session_manager.get_session()
 
@@ -116,7 +123,7 @@ class TestSessionManager(unittest.IsolatedAsyncioTestCase):
         now = datetime.now(timezone.utc)
         expired = now + timedelta(hours=2)
         with self.assertRaises(SessionDBManagerError):
-            await self.session_manager.update_session(session_id, now, expired)
+            await self.session_manager.update_session(session_id, expired)
         
         logger.info("Test Passed: test_update_session_integrityError")
 
@@ -248,12 +255,10 @@ class TestSessionManager(unittest.IsolatedAsyncioTestCase):
         now = datetime.now(timezone.utc)
         expired = now + timedelta(hours=2)
 
-        await self.session_manager.update_session(session_id, now, expired)
+        await self.session_manager.update_session(session_id, expired)
 
         session = await self.session_manager.get_session()
-        self.assertIsNotNone(session.created_at.tzinfo)
         self.assertIsNotNone(session.expires_at.tzinfo)
-        self.assertEqual(session.created_at.tzinfo.utcoffset(session.created_at) , timedelta(0))
         self.assertEqual(session.expires_at.tzinfo.utcoffset(session.expires_at) , timedelta(0))
         
         logger.info("Test Passed: test_timezone_awareness_after_creation")
@@ -264,20 +269,18 @@ class TestSessionManager(unittest.IsolatedAsyncioTestCase):
         
         session_id = "test_session_id"
         now = datetime.now(timezone.utc)
-        created = now + timedelta(minutes=5)
-        expired = created + timedelta(hours=2)
+        expired = now - timedelta(hours=2)
         
         with self.assertRaises(ValueError):
-            await self.session_manager.update_session(session_id,created,expired)
+            await self.session_manager.update_session(session_id,expired)
 
         session = await self.session_manager.get_session()
         self.assertIsNone(session)
 
-        created = now - timedelta(minutes=1)
-        expired = created + timedelta(hours=3)
+        expired = now + timedelta(hours=3)
         
         with self.assertRaises(ValueError):
-            await self.session_manager.update_session(session_id,created,expired)
+            await self.session_manager.update_session(session_id,expired)
 
         session = await self.session_manager.get_session()
         self.assertIsNone(session)
@@ -295,7 +298,6 @@ class TestSessionManager(unittest.IsolatedAsyncioTestCase):
         now = datetime.now(timezone.utc)
         expired_session = SessionData(
             session_id= encrypted_session,
-            created_at=now - timedelta(hours=3),
             expires_at=now - timedelta(minutes=1),
         )
         async with self.TestSessionLocal() as session:
@@ -708,6 +710,60 @@ class TestTokenManager(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(token.token,"new_access_token")
         
         logger.info("Test Passed: test_update_tokens_clean_old_tokens")
+        
+    async def test_get_valid_token_again(self):
+        """Test retrieval of a valid token."""
+        logger.info("Test Started: test_get_valid_token_again")
+        token = TokenData(
+            token=self.token_manager.encrypt("valid_access_token"),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+        )
+        async with self.TestSessionLocal() as session:
+            async with session.begin():
+                session.add(token)
+
+        result = await self.token_manager.get_valid_token("access")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.token, "valid_access_token")
+        
+        self.assertIsNotNone(result.expires_at.tzinfo)
+        self.assertEqual(result.expires_at.tzinfo.utcoffset(result.expires_at) , timedelta(0))
+        
+        result = await self.token_manager.get_valid_token("access")
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result.token, "valid_access_token")
+        
+        logger.info("Test Passed: test_get_valid_token_again")
+        
+    async def test_get_all_tokens_again(self):
+        """Test retrieving all tokens."""
+        logger.info("Test Started: test_get_all_tokens")
+        access_token = TokenData(
+            token=self.token_manager.encrypt("access1"), expires_at=datetime.now(timezone.utc) + timedelta(minutes=10)
+        )
+        refresh_token = RefreshTokenData(
+            token=self.token_manager.encrypt("refresh1"), expires_at=datetime.now(timezone.utc) + timedelta(hours=1)
+        )
+        async with self.TestSessionLocal() as session:
+            async with session.begin():
+                session.add(access_token)
+                session.add(refresh_token)
+
+        tokens = await self.token_manager.get_all_tokens()
+        self.assertIn("access_tokens", tokens)
+        self.assertIn("refresh_tokens", tokens)
+        self.assertEqual(len(tokens["access_tokens"]), 1)
+        self.assertEqual(len(tokens["refresh_tokens"]), 1)
+        
+        tokens = await self.token_manager.get_all_tokens()
+        self.assertIn("access_tokens", tokens)
+        self.assertIn("refresh_tokens", tokens)
+        self.assertEqual(len(tokens["access_tokens"]), 1)
+        self.assertEqual(len(tokens["refresh_tokens"]), 1)
+        
+        logger.info("Test Passed: test_get_all_tokens")
         
 class TestSettingsManager(unittest.IsolatedAsyncioTestCase):
 

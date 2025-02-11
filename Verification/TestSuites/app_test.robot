@@ -36,6 +36,12 @@ Stop Session Server And Start App
     Stop Session Server    /sessionServer/
     Start Application
 
+Wrong Server Domain Conf
+    [Documentation]    Start App with wrong Session Server Domain configuration
+    Change Server Domain    TestDomain
+    Set Client Env
+    Start Application
+
 *** Test Cases ***
 Test Open and Close App
     [Tags]  Smoke Test
@@ -122,7 +128,7 @@ Test Refresh Token
     If Object Visible   ${APP_WINDOW}
     ${current_tokens}=      Get Tokens
     Should Not Be Empty   ${current_tokens['access_tokens']}
-    Sleep    90
+    Sleep    50
     ${new_tokens}=      Get Tokens
     Should Not Be Equal    ${current_tokens['access_tokens']}    ${new_tokens['access_tokens']}
     Click Object    ${APP_CLOSE_BUTTON}
@@ -132,7 +138,7 @@ Test Refresh Token
 
 Test Login Failed
     [Tags]  System Test
-    [Setup]     Stop Session Server And Start App
+    [Setup]     Wrong Server Domain Conf
     [Documentation]    Simulates a failed login scenario due to server connection issues and verifies error handling.
     Set Text    ${USERNAME_TEXT_FIELD}  ${USERNAME}
     Set Text    ${PASSWORD_TEXT_FIELD}  ${PASSWORD}
@@ -143,7 +149,7 @@ Test Login Failed
     Type Textfield  ${CODE}     ${TWO_FACTORE_CODE_TEXT_FIELD}
     Click Object    ${TOTP_BUTTON}
     Sleep   5
-    Check Popup     ${POPUP_WINDOW}   Applications have faced a critical issue:Cannot connect to host sessionid:8080 ssl:default [Komputer zdalny odrzucił połączenie sieciowe],Please contact the administrator
+    Check Popup     ${POPUP_WINDOW}   Applications have faced a critical issue:Cannot connect to host testdomain:9876 ssl:default [getaddrinfo failed],Please contact the administrator
     Click Object    ${ERROR_POPUP_BUTTON}
 
 

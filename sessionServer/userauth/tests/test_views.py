@@ -381,7 +381,7 @@ class LoginAPIViewTest(APITestCase):
             "last_name": "Czwarty",
             "email": "rysiek@example.com",
             "username": 'Rysiek',
-            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/\[]'
+            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/[]'
         }
         
         logger.debug("Creating user with username: %s", user_data["username"])
@@ -415,7 +415,7 @@ class LoginAPIViewTest(APITestCase):
             "last_name": "Czwarty",
             "email": "rysiek@example.com",
             "username": 'Rysiek.12-+',
-            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/\[]'
+            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/[]'
         }
 
         logger.debug("Creating user with username: %s", user_data["username"])
@@ -458,7 +458,7 @@ class LoginAPIViewTest(APITestCase):
             "last_name": "Czwarty",
             "email": "rysiek@example.com",
             "username": 'Rysiek.12-+',
-            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/\[]'* 50
+            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/[]'* 50
         }
 
         logger.debug("Creating user with username: %s", user_data["username"])
@@ -504,7 +504,7 @@ class LoginAPIViewTest(APITestCase):
             "last_name": "Czwarty",
             "email": "rysiek@example.com",
             "username": 'Rysiek.12-+',
-            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/\[]'* 50
+            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/[]'* 50
         }
 
         logger.debug("Creating user with username: %s", user_data["username"])
@@ -551,7 +551,7 @@ class LoginAPIViewTest(APITestCase):
             "last_name": "Czwarty",
             "email": "rysiek@example.com",
             "username": 'Rysiek.12-+',
-            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/\[]'* 50
+            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/[]'* 50
         }
 
         logger.debug("Creating user with data: %s", user_data)
@@ -596,7 +596,7 @@ class LoginAPIViewTest(APITestCase):
             "last_name": "Czwarty",
             "email": "rysiek@example.com",
             "username": 'Rysiek.12-+',
-            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/\[]'* 50
+            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/[]'* 50
         }
 
         logger.debug("Creating inactive user with data: %s", user_data)
@@ -636,7 +636,7 @@ class LoginAPIViewTest(APITestCase):
         logger.info("Starting test: test_login_user_empty_string")
         mock_get_secret.return_value = 'testclientsecret'
 
-        password = 'Tes!@#$%^&*()_+<>?|.,  ~`092=-/\[]' * 50
+        password = 'Tes!@#$%^&*()_+<>?|.,  ~`092=-/[]' * 50
         username = ''
 
         data = {
@@ -665,7 +665,7 @@ class LoginAPIViewTest(APITestCase):
         mock_get_secret.return_value = 'testclientsecret'
 
         password = ''
-        username = 'Tes!@#$%^&*()_+<>?|.,  ~`092=-/\[]'
+        username = 'Tes!@#$%^&*()_+<>?|.,  ~`092=-/[]'
 
         data = {
             'username': username,
@@ -716,7 +716,7 @@ class LoginAPIViewTest(APITestCase):
                 "last_name": "Czwarty",
                 "email": "rysiek@example.com",
                 "username": 'Rysiek.12-+',
-                'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/\[]'
+                'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/[]'
         }
 
         user = User.objects.create_user(**user_data)
@@ -1447,13 +1447,16 @@ class LogoutAPIViewTests(APITestCase):
         self.assertEqual(response.data['detail'].code, "not_authenticated")
         
         logger.info("Test passed: test_logout_delete_token")
-    
+        
+    @patch('userauth.views.LoginAPIView.get_decrypted_secret') 
     @patch.object(SSLMiddleware, '__call__',  new=bypass_ssl_middleware)    
-    def test_logout_decrypted_secret(self):
+    def test_logout_decrypted_secret(self,mock_decrypt_secret):
         """
         test case verifies no connection to secret server
         """
         logger.info("Starting test: test_logout_decrypted_secret")
+        
+        mock_decrypt_secret.side_effect = SecretServerError(response=Response({"error": "Secret retrieval failed"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR))
         token = AccessToken.objects.create(
             user=self.user,
             token="testaccesstoken",
@@ -1469,7 +1472,7 @@ class LogoutAPIViewTests(APITestCase):
         logger.info(f"Response received with status code: {response.status_code}")
         self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-        self.assertEqual(response.data["error"], "An unexpected error occurred, please try again")
+        self.assertEqual(response.data["error"], "Secret retrieval failed")
         
         logger.info("Test passed: test_logout_decrypted_secret")
         
@@ -1830,7 +1833,7 @@ class TestCustomRefreshTokenView(APITestCase):
             "last_name": "Czwarty",
             "email": "rysiek@example.com",
             "username": 'Rysiek',
-            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/\[]'
+            'password':'Tes!@#$%^&*()_+<>?|.,~`092=-/[]'
         }
         
 
